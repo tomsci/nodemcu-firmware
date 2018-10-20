@@ -8,15 +8,15 @@ if not (_VERSION == "Lua 5.1" and pcall(require,"lfs")) then
   print  [[
 
 cross_lua.lua must be run within Lua 5.1 and it requires the Lua Filesystem to be installed. 
-On most *nix distrubitions youwill find a packages lua-5.1 and lua-filesystem, or 
-alternalively you can install lua-rocks and use the Rocks package manager to install lfs.
+On most *nix distributions you will find a packages lua-5.1 and lua-filesystem, or 
+alternatively you can install lua-rocks and use the Rocks package manager to install lfs.
 ]]
   os.exit(1)
 end
 builder:init( args )
 builder:set_build_mode( builder.BUILD_DIR_LINEARIZED )
 local output = 'luac.cross'
-local cdefs = '-DLUA_CROSS_COMPILER'
+local cdefs = '-DLUA_CROSS_COMPILER -DLUA_USE_STDIO'
 
 -- Lua source files and include path
 local lua_files = [[
@@ -25,12 +25,11 @@ local lua_files = [[
     lparser.c lrotable.c lstate.c lstring.c lstrlib.c ltable.c ltablib.c 
     ltm.c  lundump.c lvm.c lzio.c 
     luac_cross/luac.c luac_cross/loslib.c luac_cross/print.c
-    ../modules/linit.c
-    ../libc/c_stdlib.c
+    ../base_nodemcu/linit.c
   ]]
 lua_files = lua_files:gsub( "\n" , "" )
-local lua_full_files = utils.prepend_path( lua_files, "app/lua" )
-local local_include = "-Iapp/include -Iinclude -Iapp/lua"
+local lua_full_files = utils.prepend_path( lua_files, "components/lua" )
+local local_include = "-Icomponents/base_nodemcu/include -Icomponents/lua -Ibuild/include"
 
 -- Compiler/linker options
 builder:set_compile_cmd( sf( "gcc -O2 %s -Wall %s -c $(FIRST) -o $(TARGET)", local_include, cdefs ) )

@@ -218,7 +218,7 @@ static int os_setlocale (lua_State *L) {
 
 
 static int os_exit (lua_State *L) {
-  c_exit(luaL_optint(L, 1, EXIT_SUCCESS));
+  exit(luaL_optint(L, 1, EXIT_SUCCESS));
 }
 
 #undef MIN_OPT_LEVEL

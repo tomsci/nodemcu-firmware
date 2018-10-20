@@ -1,8 +1,8 @@
 # Match up all the module source files with their corresponding Kconfig
 # option in the form LUA_MODULE_<modname> and if enabled, add a
 # "-u <modname>_module_selected1" option to force the linker to include
-# the module. See components/core/include/module.h for further details on
-# how this works.
+# the module. See components/base_nodemcu/include/module.h for further details
+# on how this works.
 -include $(PROJECT_PATH)/build/include/config/auto.conf
 include $(PROJECT_PATH)/components/modules/uppercase.mk
 

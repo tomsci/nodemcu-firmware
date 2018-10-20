@@ -21,6 +21,8 @@
 #ifndef LUA_CROSS_COMPILER
 #include "vfs.h"
 #include "c_stdlib.h" // for c_getenv
+#else
+#define c_getenv getenv
 #endif
 
 #include "lauxlib.h"
@@ -334,9 +336,9 @@ static int ll_loadlib (lua_State *L) {
 */
 #ifdef LUA_CROSS_COMPILER
 static int readable (const char *filename) {
-  FILE *f = c_fopen(filename, "r");  /* try to open file */
+  FILE *f = fopen(filename, "r");  /* try to open file */
   if (f == NULL) return 0;  /* open failed */
-  c_fclose(f);
+  fclose(f);
   return 1;
 }
 #else
