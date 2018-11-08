@@ -55,6 +55,15 @@ static int node_dsleep (lua_State *L)
 }
 
 
+// Lua: node.dsleeps(seconds)
+static int node_dsleeps (lua_State *L)
+{
+  uint64_t secs = luaL_optinteger (L, 1, 0);
+  esp_deep_sleep (secs * 1000 * 1000);
+  return 0;
+}
+
+
 extern lua_Load gLoad;
 extern bool user_process_input(bool force);
 // Lua: input("string")
@@ -393,6 +402,7 @@ LROT_BEGIN(node)
   LROT_FUNCENTRY( chipid,     node_chipid )
   LROT_FUNCENTRY( compile,    node_compile )
   LROT_FUNCENTRY( dsleep,     node_dsleep )
+  LROT_FUNCENTRY( dsleeps,    node_dsleeps )
   LROT_TABENTRY ( egc,        node_egc )
   LROT_FUNCENTRY( flashreload,luaN_reload_reboot )
   LROT_FUNCENTRY( flashindex, luaN_index )
