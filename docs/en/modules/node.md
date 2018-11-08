@@ -88,42 +88,27 @@ dofile("hello.lc")
 
 ## node.dsleep()
 
-Enters deep sleep mode, wakes up when timed out.
+Like `node.dsleeps()` but the argument is in microseconds. Deprecated, use `node.dsleeps()` instead.
 
-The maximum sleep time is 4294967295us, ~71 minutes. This is an SDK limitation.
-Firmware from before 05 Jan 2016 have a maximum sleeptime of ~35 minutes.
+## node.dsleeps()
 
-!!! note "Note:"
+Enters deep sleep mode for the given number of seconds, restarts the processor when time expires.
 
-    This function can only be used in the condition that esp8266 PIN32(RST) and PIN8(XPD_DCDC aka GPIO16) are connected together. Using sleep(0) will set no wake up timer, connect a GPIO to pin RST, the chip will wake up by a falling-edge on pin RST.
+If `secs` is zero or omitted, this API behaves like `node.restart()` and restarts the processor immediately.
 
 #### Syntax
-`node.dsleep(us, option)`
+`node.dsleeps(secs)`
 
 #### Parameters
- - `us` number (integer) or `nil`, sleep time in micro second. If `us == 0`, it will sleep forever. If `us == nil`, will not set sleep time.
-
- - `option` number (integer) or `nil`. If `nil`, it will use last alive setting as default option.
-	- 0, init data byte 108 is valuable
-	- \> 0, init data byte 108 is valueless
-	- 0, RF_CAL or not after deep-sleep wake up, depends on init data byte 108
-	- 1, RF_CAL after deep-sleep wake up, there will belarge current
-	- 2, no RF_CAL after deep-sleep wake up, there will only be small current
-	- 4, disable RF after deep-sleep wake up, just like modem sleep, there will be the smallest current
+ - `secs` number of seconds to sleep.
 
 #### Returns
-`nil`
+Does not return.
 
 #### Example
 ```lua
---do nothing
-node.dsleep()
---sleep μs
-node.dsleep(1000000)
---set sleep option, then sleep μs
-node.dsleep(1000000, 4)
---set sleep option only
-node.dsleep(nil,4)
+-- sleep 10 seconds then reboot
+node.dsleeps(10)
 ```
 
 ## node.flashid()

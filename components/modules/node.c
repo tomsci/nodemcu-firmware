@@ -52,6 +52,15 @@ static int node_dsleep (lua_State *L)
 }
 
 
+// Lua: node.dsleeps(seconds)
+static int node_dsleeps (lua_State *L)
+{
+  uint64_t secs = luaL_optinteger (L, 1, 0);
+  esp_deep_sleep (secs * 1000 * 1000);
+  return 0;
+}
+
+
 extern lua_Load gLoad;
 extern bool user_process_input(bool force);
 // Lua: input("string")
@@ -320,6 +329,7 @@ static const LUA_REG_TYPE node_map[] =
   { LSTRKEY( "chipid" ),    LFUNCVAL( node_chipid ) },
   { LSTRKEY( "compile" ),   LFUNCVAL( node_compile ) },
   { LSTRKEY( "dsleep" ),    LFUNCVAL( node_dsleep ) },
+  { LSTRKEY( "dsleeps" ),   LFUNCVAL( node_dsleeps ) },
   { LSTRKEY( "egc" ),       LROVAL( node_egc_map ) },
   { LSTRKEY( "heap" ),      LFUNCVAL( node_heap )  },
   { LSTRKEY( "input" ),     LFUNCVAL( node_input ) },
