@@ -253,6 +253,14 @@ LUA_API lua_Alloc (lua_getallocf) (lua_State *L, void **ud);
 LUA_API void lua_setallocf (lua_State *L, lua_Alloc f, void *ud);
 
 
+/*
+** Buffer management
+*/
+LUA_API void *(lua_newbuf) (lua_State *L, size_t len);
+LUA_API void *(lua_reallocbuf) (lua_State *L, void *buf, size_t newlen);
+LUA_API void (lua_pushbuf) (lua_State *L, void *buf);
+#define lua_freebuf(L, b) lua_reallocbuf(L, (b), 0)
+
 
 /*
 ** ===============================================================
