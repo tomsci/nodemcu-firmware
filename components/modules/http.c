@@ -601,14 +601,38 @@ static int http_lapi_ack(lua_State *L)
 
 //// One-shot functions http.get(), http.post() etc follow ////
 
+enum {
+  CacheTableIdxStatus = 1,
+  CacheTableIdxHeaders = 2,
+  CacheTableIdxContentLen = 3,
+  CacheTableIdxDataCount = 4, // If content len known: byte count. Otherwise: num data items
+  CacheTableIdxData = 5,
+  CacheTableNumEntries = 5,
+  // There will be more entries in the table if there's no content-length and
+  // we have to buffer the individual chunks of data
+};
+
 // args: statusCode, headers
 static int http_accumulate_headers(lua_State *L)
 {
   int cache_table = lua_upvalueindex(1);
-  lua_rawseti(L, cache_table, 2); // cache_table[2] = headers
-  lua_rawseti(L, cache_table, 1); // cache_table[1] = statusCode
-  lua_pushinteger(L, 2);
-  lua_rawseti(L, cache_table, 0); // Use zero for len
+
+  // Get content-length header
+  lua_getfield(L, 2, "content-length");
+  size_t len = lua_tointeger(L, -1);
+  if (len) {
+    // Hurrah, we can preallocate our buffer
+    lua_rawseti(L, cache_table, CacheTableIdxContentLen);
+    char *buf = (char *)lua_newbuf(L, len);
+    lua_pushlightuserdata(L, buf);
+    lua_rawseti(L, cache_table, CacheTableIdxData);
+  } else {
+    lua_pop(L, 1);
+  }
+  lua_pushinteger(L, 0);
+  lua_rawseti(L, cache_table, CacheTableIdxDataCount);
+  lua_rawseti(L, cache_table, CacheTableIdxHeaders);
+  lua_rawseti(L, cache_table, CacheTableIdxStatus);
   return 0;
 }
 
@@ -616,47 +640,89 @@ static int http_accumulate_headers(lua_State *L)
 static int http_accumulate_data(lua_State *L)
 {
   int cache_table = lua_upvalueindex(1);
-  lua_rawgeti(L, cache_table, 0);
-  int n = lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  lua_rawseti(L, cache_table, n + 1); // top of stack is data
-  lua_pushinteger(L, n + 1);
-  lua_rawseti(L, cache_table, 0);
+  lua_rawgeti(L, cache_table, CacheTableIdxContentLen);
+  if (lua_isnil(L, -1)) {
+    // No content len so no preallocated buffer
+    lua_rawgeti(L, cache_table, CacheTableIdxDataCount);
+    int n = lua_tointeger(L, -1);
+    lua_settop(L, 2); // so data is top
+    lua_rawseti(L, cache_table, CacheTableIdxData + n); // append data to table
+    lua_pushinteger(L, n + 1);
+    lua_rawseti(L, cache_table, CacheTableIdxDataCount);
+  } else {
+    size_t content_len = lua_tointeger(L, -1);
+    lua_rawgeti(L, cache_table, CacheTableIdxDataCount);
+    size_t sz = lua_tointeger(L, -1);
+    size_t data_len;
+    const char *data_ptr = lua_tolstring(L, 2, &data_len);
+    lua_rawgeti(L, cache_table, CacheTableIdxData);
+    char *buf = (char *)lua_touserdata(L, -1);
+    size_t remaining = content_len - sz; // how much space left in buffer
+    if (data_len > remaining) {
+      ESP_LOGW(TAG, "Received %d bytes more data than Content-Length %d reported",
+        (int)(data_len - remaining), (int)content_len);
+      data_len = remaining;
+    }
+    memcpy(buf + sz, data_ptr, data_len);
+    sz += data_len;
+    lua_pushinteger(L, sz);
+    lua_rawseti(L, cache_table, CacheTableIdxDataCount);
+  }
   return 0;
 }
 
+// args: statusCode, connected
 static int http_accumulate_complete(lua_State *L)
 {
-  lua_settop(L, 1); // Don't care about any of the args except status_code
+  lua_settop(L, 1); // Don't care about the connected arg
   int context_idx = lua_upvalueindex(1);
   int cache_table = lua_upvalueindex(2);
   lua_pushvalue(L, lua_upvalueindex(3)); // The callback fn
   lua_insert(L, 1); // Put callback fn first, status_code second
 
-  // Now concat data
-  luaL_Buffer b;
-  luaL_buffinit(L, &b);
-  for (int i = 3; ; i++) {
-    lua_rawgeti(L, cache_table, i);
-    if lua_isnoneornil(L, -1) {
-      lua_pop(L, 1);
-      break;
+  lua_rawgeti(L, cache_table, CacheTableIdxContentLen);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1); // content_len
+    // Now concat data
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    for (int i = CacheTableIdxData; ; i++) {
+      lua_rawgeti(L, cache_table, i);
+      if lua_isnoneornil(L, -1) {
+        lua_pop(L, 1);
+        break;
+      }
+      luaL_addvalue(&b);
+      // Remove from table, don't need any more
+      lua_pushnil(L);
+      lua_rawseti(L, cache_table, i);
     }
-    luaL_addvalue(&b);
-    // Remove from table, don't need any more
-    lua_pushnil(L);
-    lua_rawseti(L, cache_table, i);
+    luaL_pushresult(&b); // data now pushed
+  } else {
+    // Have pre-allocated buffer.
+    size_t content_len = lua_tointeger(L, -1);
+    lua_rawgeti(L, cache_table, CacheTableIdxDataCount);
+    size_t buf_len = lua_tointeger(L, -1);
+    lua_rawgeti(L, cache_table, CacheTableIdxData);
+    void *buf = lua_touserdata(L, -1);
+    lua_pop(L, 3); // buf, buf_len, content_len
+    if (buf_len != content_len) {
+      // Check consistency. Can't be larger, might be smaller.
+      ESP_LOGW(TAG, "HTTP request completed with %d bytes data but Content-Length was %d",
+        (int)buf_len, (int)content_len);
+      buf = lua_reallocbuf(L, buf, buf_len);
+    }
+    lua_pushbuf(L, buf); // zero-copy converts buf to a Lua string
   }
-  luaL_pushresult(&b); // data now pushed
   lhttp_context_t *context = (lhttp_context_t *)luaL_checkudata(L, context_idx, http_context_mt);
   if (lua_isnoneornil(L, 1)) {
     // No callback fn so must be sync, meaning just need to stash headers and data in the context
     // steal some completion refs, nothing's going to need them again in a one-shot
     context_setref(L, context, DataCallback); // pops data
-    lua_rawgeti(L, cache_table, 2); // headers
+    lua_rawgeti(L, cache_table, CacheTableIdxHeaders);
     context_setref(L, context, HeadersCallback);
   } else {
-    lua_rawgeti(L, cache_table, 2); // headers
+    lua_rawgeti(L, cache_table, CacheTableIdxHeaders);
     lua_call(L, 3, 0);
   }
   // unset this since it contains a reference to the context and would prevent the context to be garbage collected
@@ -674,7 +740,7 @@ static int make_oneshot_request(lua_State *L, int callback_idx)
   // Make sure we always send Connection: close for oneshots
   esp_http_client_set_header(context->client, "Connection", "close");
 
-  lua_newtable(L); // cache table
+  lua_createtable(L, CacheTableNumEntries, 0); // cache table
 
   lua_pushvalue(L, -1); // dup cache table
   lua_pushcclosure(L, http_accumulate_headers, 1);
