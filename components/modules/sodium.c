@@ -96,15 +96,14 @@ static int l_crypto_box_seal(lua_State *L)
   const uint8_t *pk = get_pk(L, 2);
 
   const size_t ciphertext_len = crypto_box_SEALBYTES + msg_len;
-  uint8_t *ciphertext = (uint8_t *)luaM_malloc(L, ciphertext_len);
+  uint8_t *ciphertext = (uint8_t *)lua_newbuf(L, ciphertext_len);
 
   int err = crypto_box_seal(ciphertext, msg, msg_len, pk);
   if (err) {
-    luaM_freemem(L, ciphertext, ciphertext_len);
+    lua_freebuf(L, ciphertext);
     return luaL_error(L, "crypto_box_seal returned %d", err);
   }
-  lua_pushlstring(L, (char *)ciphertext, ciphertext_len);
-  luaM_freemem(L, ciphertext, ciphertext_len);
+  lua_pushbuf(L, ciphertext);
   return 1;
 }
 
@@ -117,15 +116,15 @@ static int l_crypto_box_seal_open(lua_State *L)
   const uint8_t *sk = get_sk(L, 3);
 
   const size_t decrypted_len = ciphertext_len - crypto_box_SEALBYTES;
-  uint8_t *decrypted = (uint8_t *)luaM_malloc(L, decrypted_len);
+  uint8_t *decrypted = (uint8_t *)lua_newbuf(L, decrypted_len);
 
   int err = crypto_box_seal_open(decrypted, ciphertext, ciphertext_len, pk, sk);
   if (err) {
+    lua_freebuf(L, decrypted);
     lua_pushnil(L);
   } else {
-    lua_pushlstring(L, (char *)decrypted, decrypted_len);
+    lua_pushbuf(L, decrypted);
   }
-  luaM_freemem(L, decrypted, decrypted_len);
   return 1;
 }
 
