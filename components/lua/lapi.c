@@ -467,6 +467,46 @@ LUA_API void lua_pushrolstring (lua_State *L, const char *s, size_t len) {
 }
 
 
+LUA_API void *lua_newbuf(lua_State *L, size_t len) {
+  TString *ts = cast(TString *, luaM_malloc(L, (len+1)*sizeof(char)+sizeof(TString)));
+  ts->tsv.len = len;
+  ts->tsv.tt = LUA_TNIL;
+  ts->tsv.marked = 0; /* so sizestring works */
+  return ts + 1;
+}
+
+
+LUA_API void *lua_reallocbuf(lua_State *L, void *buf, size_t newlen) {
+  size_t oldsz, newsz;
+  TString *ts = cast(TString *, buf) - 1;
+  if (ts->tsv.tt != LUA_TNIL) {
+      lua_pushliteral(L, "Attempt to modify an invalid buf");
+      lua_error(L);
+    }
+  oldsz = (ts->tsv.len+1)*sizeof(char)+sizeof(TString);
+  if (newlen == 0) {
+    /* Free the buffer */
+    luaM_freemem(L, ts, oldsz);
+    return NULL;
+  }
+  newsz = (newlen+1)*sizeof(char)+sizeof(TString);
+  ts = cast(TString *, luaM_realloc_(L, ts, oldsz, newsz));
+  ts->tsv.len = newlen;
+  return ts + 1;
+}
+
+
+LUA_API void lua_pushbuf(lua_State *L, void *buf) {
+  TString *ts = cast(TString *, buf) - 1;
+  lua_lock(L);
+  luaC_checkGC(L);
+  luaS_buftostr(L, ts);
+  setsvalue2s(L, L->top, ts);
+  api_incr_top(L);
+  lua_unlock(L);
+}
+
+
 LUA_API void lua_pushstring (lua_State *L, const char *s) {
   if (s == NULL)
     lua_pushnil(L);

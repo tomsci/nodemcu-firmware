@@ -31,4 +31,6 @@ LUAI_FUNC Udata *luaS_newudata (lua_State *L, size_t s, Table *e);
 LUAI_FUNC TString *luaS_newlstr (lua_State *L, const char *str, size_t l);
 LUAI_FUNC TString *luaS_newrolstr (lua_State *L, const char *str, size_t l);
 
+LUAI_FUNC void luaS_buftostr (lua_State *L, TString *ts);
+
 #endif

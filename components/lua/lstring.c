@@ -18,6 +18,7 @@
 #include "lstate.h"
 #include "lstring.h"
 
+#define LUAS_PREALLOCED_STRING    2
 #define LUAS_READONLY_STRING      1
 #define LUAS_REGULAR_STRING       0
 
@@ -53,7 +54,7 @@ void luaS_resize (lua_State *L, int newsize) {
 }
 
 static TString *newlstr (lua_State *L, const char *str, size_t l,
-                                       unsigned int h, int readonly) {
+                                       unsigned int h, int strtype) {
   TString *ts;
   stringtable *tb;
   if (l+1 > (MAX_SIZET - sizeof(TString))/sizeof(char))
@@ -61,17 +62,27 @@ static TString *newlstr (lua_State *L, const char *str, size_t l,
   tb = &G(L)->strt;
   if ((tb->nuse + 1) > cast(lu_int32, tb->size) && tb->size <= MAX_INT/2)
     luaS_resize(L, tb->size*2);  /* too crowded */
-  ts = cast(TString *, luaM_malloc(L, readonly ? sizeof(char**)+sizeof(TString) : (l+1)*sizeof(char)+sizeof(TString)));
+  if (strtype == LUAS_PREALLOCED_STRING)
+    ts = cast(TString *, str) - 1;
+  else
+    ts = cast(TString *, luaM_malloc(L, strtype == LUAS_READONLY_STRING ? sizeof(char**)+sizeof(TString) : (l+1)*sizeof(char)+sizeof(TString)));
   ts->tsv.len = l;
   ts->tsv.hash = h;
   ts->tsv.marked = luaC_white(G(L));
   ts->tsv.tt = LUA_TSTRING;
-  if (!readonly) {
+  switch (strtype) {
+  case LUAS_REGULAR_STRING:
     memcpy(ts+1, str, l*sizeof(char));
+    /* Drop through */
+  case LUAS_PREALLOCED_STRING:
     ((char *)(ts+1))[l] = '\0';  /* ending 0 */
-  } else {
+    break;
+  case LUAS_READONLY_STRING:
     *(char **)(ts+1) = (char *)str;
     luaS_readonly(ts);
+    break;
+  default:
+    break;
   }
   h = lmod(h, tb->size);
   ts->tsv.next = tb->hash[h];  /* chain new entry */
@@ -81,7 +92,7 @@ static TString *newlstr (lua_State *L, const char *str, size_t l,
 }
 
 
-static TString *luaS_newlstr_helper (lua_State *L, const char *str, size_t l, int readonly) {
+static TString *luaS_newlstr_helper (lua_State *L, const char *str, size_t l, int strtype) {
   GCObject *o;
   unsigned int h = cast(unsigned int, l);  /* seed */
   size_t step = (l>>5)+1;  /* if string is too long, don't hash all its chars */
@@ -98,7 +109,7 @@ static TString *luaS_newlstr_helper (lua_State *L, const char *str, size_t l, in
       return ts;
     }
   }
-  return newlstr(L, str, l, h, readonly);  /* not found */
+  return newlstr(L, str, l, h, strtype);  /* not found */
 }
 
 static int lua_is_ptr_in_ro_area(const char *p) {
@@ -146,3 +157,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, Table *e) {
   return u;
 }
 
+
+void luaS_buftostr (lua_State *L, TString *ts) {
+  luaS_newlstr_helper(L, cast(const char *, ts + 1), ts->tsv.len, LUAS_PREALLOCED_STRING);
+}
