@@ -496,14 +496,20 @@ LUA_API void *lua_reallocbuf(lua_State *L, void *buf, size_t newlen) {
 }
 
 
-LUA_API void lua_pushbuf(lua_State *L, void *buf) {
+LUA_API const char *lua_pushbuf(lua_State *L, void *buf) {
+  TString *result;
   TString *ts = cast(TString *, buf) - 1;
   lua_lock(L);
   luaC_checkGC(L);
-  luaS_buftostr(L, ts);
-  setsvalue2s(L, L->top, ts);
+  result = luaS_buftostr(L, ts);
+  setsvalue2s(L, L->top, result);
   api_incr_top(L);
   lua_unlock(L);
+  if (result != ts) {
+    /* Pre-existing string was found, so need to free ts */
+    luaM_freemem(L, ts, sizestring(&ts->tsv));
+  }
+  return cast(const char *, result + 1);
 }
 
 

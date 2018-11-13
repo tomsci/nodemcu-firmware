@@ -158,6 +158,6 @@ Udata *luaS_newudata (lua_State *L, size_t s, Table *e) {
 }
 
 
-void luaS_buftostr (lua_State *L, TString *ts) {
-  luaS_newlstr_helper(L, cast(const char *, ts + 1), ts->tsv.len, LUAS_PREALLOCED_STRING);
+TString *luaS_buftostr (lua_State *L, TString *ts) {
+  return luaS_newlstr_helper(L, cast(const char *, ts + 1), ts->tsv.len, LUAS_PREALLOCED_STRING);
 }
