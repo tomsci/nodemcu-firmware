@@ -714,10 +714,9 @@ static int http_accumulate_complete(lua_State *L)
     }
     lua_pushbuf(L, buf); // zero-copy converts buf to a Lua string
   }
+  lhttp_context_t *context = (lhttp_context_t *)luaL_checkudata(L, context_idx, http_context_mt);
   if (lua_isnoneornil(L, 1)) {
     // No callback fn so must be sync, meaning just need to stash headers and data in the context
-    lhttp_context_t *context = (lhttp_context_t *)luaL_checkudata(L, context_idx, http_context_mt);
-    
     // steal some completion refs, nothing's going to need them again in a one-shot
     context_setref(L, context, DataCallback); // pops data
     lua_rawgeti(L, cache_table, CacheTableIdxHeaders);
@@ -726,6 +725,8 @@ static int http_accumulate_complete(lua_State *L)
     lua_rawgeti(L, cache_table, CacheTableIdxHeaders);
     lua_call(L, 3, 0);
   }
+  // unset this since it contains a reference to the context and would prevent the context to be garbage collected
+  context_unsetref(L, context, CompleteCallback);
   return 0;
 }
 
