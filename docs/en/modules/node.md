@@ -88,19 +88,31 @@ dofile("hello.lc")
 
 ## node.dsleep()
 
-Like `node.dsleeps()` but the argument is in microseconds. Deprecated, use `node.dsleeps()` instead.
+Like `node.dsleeps()` but the argument is in microseconds. For any lengthy sleep, it is recommended to use `node.dsleeps()` instead.
 
 ## node.dsleeps()
 
-Enters deep sleep mode for the given number of seconds, restarts the processor when time expires.
+Enters deep sleep mode for the given number of seconds then restarts the processor.
 
-If `secs` is zero or omitted, this API behaves like `node.restart()` and restarts the processor immediately.
+This function may also be configured to trigger the restart when one or more input GPIOs have a particular level.
+
+If `secs` is zero or omitted, this API behaves like `node.restart()` and restarts the processor immediately. If `secs` is `-1`, the processor will sleep indefinitely (or until any configured GPIO wakeups occur).
+
+Only RTC GPIO pins can be used to trigger wake from deep sleep. On the ESP32, these are GPIOs 0, 2, 4, 12-15, 25-27, and 32-39. An error will be raised if any of the specified pins are not RTC-capable. If multiple pins are specified and `level=1` (which is the default), the wakeup will occur if _any_ of the pins are high. If `level=0` then the wakeup will only occur if _all_ the specified pins are low.
+
+This API uses the EXT1 wakeup mode which by default powers down RTC peripherals including the internal pullup/pulldown resistors. This means the internal pullups/pulldowns will not function during the sleep. To disable this behavior and keep the pullups/pulldowns active, specify `pull=true`. Any required pullups should be configured in advance using `gpio.config()`.
+
+Note that the `gpio.wakeup()` API has no effect on deep sleep wakeup.
 
 #### Syntax
-`node.dsleeps(secs)`
+`node.dsleeps(secs[, options])`
 
 #### Parameters
- - `secs` number of seconds to sleep.
+- `secs` number of seconds to sleep.
+- `options` nil, or a table with any of the following:
+    - a list of GPIOs. These must all be RTC-capable.
+    - `level`. Whether to trigger when any of the GPIOs are high (`level=1`, which is the default if not specified), or when all the GPIOs are low (`level=0`).
+    - `pull`. Boolean, whether to keep powering the internal pullup/pulldown resistors. Default is `false` if not specified.
 
 #### Returns
 Does not return.
@@ -109,6 +121,12 @@ Does not return.
 ```lua
 -- sleep 10 seconds then reboot
 node.dsleeps(10)
+
+-- sleep until 10 seconds have elapsed or either of GPIO 13 or 15 becomes high
+node.dsleeps(10, { 13, 15 })
+
+-- Sleep forever until GPIO13 is low, and keep its pullup powered
+node.dsleeps(-1, { 13, level=0, pull=true })
 ```
 
 ## node.flashid()
