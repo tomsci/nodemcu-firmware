@@ -7,6 +7,8 @@
 #include "vfs.h"
 #include "esp_system.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
 #include "soc/efuse_reg.h"
 #include "ldebug.h"
 #include "esp_vfs.h"
@@ -55,11 +57,56 @@ static int node_dsleep (lua_State *L)
 }
 
 
-// Lua: node.dsleeps(seconds)
+// Lua: node.dsleeps(seconds, [wakekup_opts])
 static int node_dsleeps (lua_State *L)
 {
-  uint64_t secs = luaL_optinteger (L, 1, 0);
-  esp_deep_sleep (secs * 1000 * 1000);
+  int64_t secs = luaL_optinteger (L, 1, 0);
+  if (lua_istable(L, 2)) {
+    uint64_t pin_mask = 0;
+    for (int i = 1; ; i++) {
+      lua_rawgeti(L, 2, i);
+      int pin = lua_tointeger(L, -1);
+      if (!pin) {
+        break;
+      }
+      if (!rtc_gpio_is_valid_gpio(pin)) {
+        return luaL_error(L, "Pin %d is not an RTC GPIO and cannot be used for wakeup", pin);
+      }
+      pin_mask |= (1ULL << pin);
+      lua_pop(L, 1);
+    }
+    if (pin_mask) {
+      lua_getfield(L, 2, "level");
+      int level = luaL_optint(L, -1, 1);
+      lua_pop(L, 1);
+      if (level != 0 && level != 1) {
+        return luaL_error(L, "level option must be 0 or 1");
+      }
+
+      lua_getfield(L, 2, "pull");
+      bool pull = lua_toboolean(L, -1);
+      lua_pop(L, 1);
+
+      if (pull) {
+        // Keeping the peripheral domain powered keeps the pullups/downs working
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+      }
+      esp_sleep_ext1_wakeup_mode_t mode = (level == 1) ?
+        ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW;
+      int err = esp_sleep_enable_ext1_wakeup(pin_mask, mode);
+
+      if (err) {
+        return luaL_error(L, "Error %d returned from esp32", err);
+      }
+    }
+  } else if (!lua_isnoneornil(L, 2)) {
+    luaL_argerror(L, 2, "Expected table");
+  }
+  if (secs >= 0) {
+    esp_sleep_enable_timer_wakeup((uint64_t)secs * 1000 * 1000);
+  }
+  esp_deep_sleep_start();
+  // Note, above call does not actually return
   return 0;
 }
 
