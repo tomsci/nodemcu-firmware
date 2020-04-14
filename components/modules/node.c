@@ -252,6 +252,81 @@ static int node_dsleep (lua_State *L)
   return 0;
 }
 
+enum BootReason
+{
+  BootReasonPowerOn = 1,
+  BootReasonSwReset = 2,
+  BootReasonHwReset = 3,
+  BootReasonWdtReset = 4,
+};
+
+enum ExtendedReason
+{
+  ExtReasonPowerOn = 0,
+  ExtReasonHwWdtReset = 1,
+  ExtReasonExceptionReset = 2,
+  ExtReasonSwWdtReset = 3,
+  ExtReasonSwRestart = 4,
+  ExtReasonWakeDeepSleep = 5,
+  ExtReasonExternalReset = 6,
+};
+
+static int node_bootreason (lua_State *L)
+{
+  int raw, extended;
+
+  esp_reset_reason_t reason = esp_reset_reason();
+  switch (reason) {
+    case ESP_RST_SDIO:
+    case ESP_RST_BROWNOUT:
+    case ESP_RST_EXT:
+      raw = BootReasonHwReset;
+      extended = ExtReasonExternalReset;
+      break;
+    case ESP_RST_SW:
+      raw = BootReasonSwReset;
+      extended = ExtReasonSwRestart;
+      break;
+    case ESP_RST_PANIC:
+      raw = BootReasonSwReset;
+      extended = ExtReasonExceptionReset;
+      break;
+    case ESP_RST_INT_WDT:
+    case ESP_RST_WDT:
+      raw = BootReasonWdtReset;
+      extended = ExtReasonHwWdtReset;
+      break;
+    case ESP_RST_TASK_WDT:
+      raw = BootReasonWdtReset;
+      extended = ExtReasonSwWdtReset;
+      break;
+    case ESP_RST_DEEPSLEEP:
+      raw = BootReasonHwReset;
+      extended = ExtReasonWakeDeepSleep;
+      break;
+    case ESP_RST_UNKNOWN:
+    case ESP_RST_POWERON:
+    default:
+      raw = BootReasonPowerOn;
+      extended = ExtReasonPowerOn;
+      break;
+  }
+  lua_pushinteger(L, raw);
+  lua_pushinteger(L, extended);
+
+  if (reason == ESP_RST_DEEPSLEEP) {
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+      uint64_t gpios = esp_sleep_get_ext1_wakeup_status();
+      uint32_t lo = (uint32_t)gpios;
+      uint32_t hi = (uint32_t)(gpios >> 32);
+      lua_pushinteger(L, (lua_Integer)lo);
+      lua_pushinteger(L, (lua_Integer)hi);
+      return 4;
+    }
+  }
+  return 2;
+}
 
 extern lua_Load gLoad;
 extern bool user_process_input(bool force);
@@ -637,6 +712,7 @@ LROT_BEGIN(node_wakeup)
 LROT_END(node_wakeup, NULL, 0)
 
 LROT_BEGIN(node)
+  LROT_FUNCENTRY( bootreason, node_bootreason )
   LROT_FUNCENTRY( chipid,     node_chipid )
   LROT_FUNCENTRY( compile,    node_compile )
   LROT_FUNCENTRY( dsleep,     node_dsleep )

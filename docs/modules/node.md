@@ -30,6 +30,8 @@ In general, the extended reset cause supercedes the raw code. The raw code is ke
 
 In case of extended reset cause 3 (exception reset), additional values are returned containing the crash information. These are, in order, EXCCAUSE, EPC1, EPC2, EPC3, EXCVADDR, and DEPC.
 
+On the esp32 if the extended reset cause is 5 (wake from deep sleep) and the wakeup was caused by a GPIO, then two additional values are returned which are a bitmask of the GPIO(s) that triggered the wakeup. The third value represents GPIOs 0-31 and the fourth value is for GPIOs 32 and above. For example the result for a wake from sleep caused by GPIO 31 would be `3, 5, 0x80000000, 0` (on a build with `LUA_NUMBER_INTEGRAL` defined. Use `bit.isset(val, 31)` to check for GPIO 31 being set in a way which works regardless of whether it is an integral build or not) A wakeup caused by GPIO 33 would return `3, 5, 0, 2`.
+
 #### Syntax
 `node.bootreason()`
 
@@ -93,6 +95,8 @@ Enters deep sleep mode. When the processor wakes back up depends on the supplied
 Only RTC GPIO pins can be used to trigger wake from deep sleep, and they should be configured as inputs prior to calling this API. On the ESP32, the RTC pins are GPIOs 0, 2, 4, 12-15, 25-27, and 32-39. An error will be raised if any of the specified pins are not RTC-capable. If multiple pins are specified and `level=1` (which is the default), the wakeup will occur if *any* of the pins are high. If `level=0` then the wakeup will only occur if *all* the specified pins are low.
 
 For compatibility, a number parameter `usecs` can be supplied instead of an `options` table, which is equivalent to `node.dsleep({us = usecs})`.
+
+`node.bootreason()` may be used to determine what caused the restart, and if it was a GPIO then which pin(s).
 
 #### Syntax
 `node.dsleep(usecs)` or `node.dsleep(options)`
