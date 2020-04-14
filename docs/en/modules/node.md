@@ -30,6 +30,8 @@ In general, the extended reset cause supercedes the raw code. The raw code is ke
 
 In case of extended reset cause 3 (exception reset), additional values are returned containing the crash information. These are, in order, EXCCAUSE, EPC1, EPC2, EPC3, EXCVADDR, and DEPC.
 
+On the esp32 if the extended reset cause is 5 (wake from deep sleep) then a third value is returned which is the GPIO number that triggered the wakeup, or `nil` if it wasn't caused by a EXT1 GPIO wakeup.
+
 #### Syntax
 `node.bootreason()`
 
@@ -99,6 +101,8 @@ This function may also be configured to trigger the restart when one or more inp
 If `secs` is zero or omitted, this API behaves like `node.restart()` and restarts the processor immediately. If `secs` is `-1`, the processor will sleep indefinitely (or until any configured GPIO wakeups occur).
 
 Only RTC GPIO pins can be used to trigger wake from deep sleep. On the ESP32, these are GPIOs 0, 2, 4, 12-15, 25-27, and 32-39. An error will be raised if any of the specified pins are not RTC-capable. If multiple pins are specified and `level=1` (which is the default), the wakeup will occur if _any_ of the pins are high. If `level=0` then the wakeup will only occur if _all_ the specified pins are low.
+
+`node.bootreason()` may be used to determine what caused the restart, and if it was a GPIO then which pin(s).
 
 This API uses the EXT1 wakeup mode which by default powers down RTC peripherals including the internal pullup/pulldown resistors. This means the internal pullups/pulldowns will not function during the sleep. To disable this behavior and keep the pullups/pulldowns active, specify `pull=true`. Any required pullups should be configured in advance using `gpio.config()`.
 
