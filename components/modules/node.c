@@ -84,6 +84,23 @@ static int node_dsleeps (lua_State *L)
       bool pull = lua_toboolean(L, -1);
       lua_pop(L, 1);
 
+      lua_getfield(L, 2, "isolate");
+      if (lua_istable(L, -1)) {
+        for (int i = 1; ; i++) {
+          lua_rawgeti(L, -1, i);
+          if (lua_isnil(L, -1)) {
+            lua_pop(L, 1);
+            break;
+          }
+          int pin = lua_tointeger(L, -1);
+          lua_pop(L, 1);
+          int err = rtc_gpio_isolate(pin);
+          if (err) {
+            return luaL_error(L, "Error %d returned from rtc_gpio_isolate(%d)", err, pin);
+          }
+        }
+      }
+
       if (pull) {
         // Keeping the peripheral domain powered keeps the pullups/downs working
         esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
