@@ -189,8 +189,12 @@ static int node_bootreason (lua_State *L)
   if (reason == ESP_RST_DEEPSLEEP) {
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     if (cause == ESP_SLEEP_WAKEUP_EXT1) {
-      lua_pushnumber(L, esp_sleep_get_ext1_wakeup_status());
-      return 3;
+      uint64_t gpios = esp_sleep_get_ext1_wakeup_status();
+      uint32_t lo = (uint32_t)gpios;
+      uint32_t hi = (uint32_t)(gpios >> 32);
+      lua_pushinteger(L, (lua_Integer)lo);
+      lua_pushinteger(L, (lua_Integer)hi);
+      return 4;
     }
   }
   return 2;

@@ -30,7 +30,7 @@ In general, the extended reset cause supercedes the raw code. The raw code is ke
 
 In case of extended reset cause 3 (exception reset), additional values are returned containing the crash information. These are, in order, EXCCAUSE, EPC1, EPC2, EPC3, EXCVADDR, and DEPC.
 
-On the esp32 if the extended reset cause is 5 (wake from deep sleep) then a third value is returned which is the GPIO number that triggered the wakeup, or `nil` if it wasn't caused by a EXT1 GPIO wakeup.
+On the esp32 if the extended reset cause is 5 (wake from deep sleep) and the wakeup was caused by a GPIO, then two additional values are returned which are a bitmask of the GPIO(s) that triggered the wakeup. The third value represents GPIOs 0-31 and the fourth value is for GPIOs 32 and above. For example the result for a wake from sleep caused by GPIO 31 would be `3, 5, 0x80000000, 0` (on a build with `LUA_NUMBER_INTEGRAL` defined. Use `bit.isset(val, 31)` to check for GPIO 31 being set in a way which works regardless of whether it is an integral build or not) A wakeup caused by GPIO 33 would return `3, 5, 0, 2`.
 
 #### Syntax
 `node.bootreason()`
