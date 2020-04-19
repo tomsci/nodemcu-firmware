@@ -242,7 +242,7 @@ LROT_END(sodium, NULL, 0)
 LROT_BEGIN(generichash_state)
   LROT_FUNCENTRY(update, l_crypto_generichash_update)
   LROT_FUNCENTRY(final, l_crypto_generichash_final)
-  LROT_TABENTRY(__index, generichash_state_map)
+  LROT_TABENTRY(__index, generichash_state)
 LROT_END(generichash_state, NULL, 0)
 
 static int luaopen_sodium(lua_State *L)
