@@ -135,6 +135,12 @@ config LUA_MODULE_I2S
   help
       Includes the I2S module.
 
+config LUA_MODULE_IRPWM
+  bool "IR PWM module"
+  default "n"
+  help
+      Includes the IR PWM module.
+
 config LUA_MODULE_LEDC
   bool "LEDC module"
   default "n"
