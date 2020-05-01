@@ -209,6 +209,12 @@ LUAI_FUNC void luaN_init (lua_State *L) {
     return;
   }
 
+  if (fh->mainProto >= cast(FlashAddr, fh) + fh->flash_size) {
+    NODE_ERR("TOMSCI: mainProto 0x%x not within 0x%x + %u\n",
+      fh->mainProto, cast(FlashAddr, fh), fh->flash_size);
+    return;
+  }
+
   if (fh->pROhash == ALL_SET ||
       ((fh->mainProto - cast(FlashAddr, fh)) >= fh->flash_size)) {
     NODE_ERR("Flash size check failed: %x vs 0xFFFFFFFF; size: %u\n",
