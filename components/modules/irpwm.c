@@ -18,12 +18,16 @@
 #include <driver/gpio.h>
 
 #define MAX_PULSES 200
-#define IDLE_TIME 15000 // microseconds
+#define IDLE_TIME 200000 // microseconds
+
+#define PULSE_MAX INT32_MAX
+#define PULSE_MIN INT32_MIN
+
 typedef struct irpwm_data
 {
   uint64_t last_time;
   // uint64_t last_timer_time;
-  int16_t pulses[MAX_PULSES]; // microseconds between falling edges, always < IDLE_TIME
+  int32_t pulses[MAX_PULSES]; // microseconds between falling edges, always < IDLE_TIME
   uint8_t count;
   uint8_t gpio;
   uint8_t channel; // rmt_channel_t
@@ -101,12 +105,12 @@ static void irpwm_isr(void *ctx)
       // Falling edge
       delta = -delta;
     }
-    if (delta > INT16_MAX) {
-      delta = INT16_MAX;
-    } else if (delta < INT16_MIN) {
-      delta = INT16_MIN;
+    if (delta > PULSE_MAX) {
+      delta = PULSE_MAX;
+    } else if (delta < PULSE_MIN) {
+      delta = PULSE_MIN;
     }
-    data->pulses[data->count++] = (int16_t)(delta);
+    data->pulses[data->count++] = (int32_t)(delta);
     data->last_time = t;
   }
 }
@@ -198,7 +202,7 @@ static int irpwm_txconfig(lua_State *L)
   config.tx_config.idle_level = 0;
   config.tx_config.idle_output_en = true;
 
-  ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
+  // ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
 
   check_err(L, rmt_config(&config));
   data->channel = config.channel;
@@ -249,7 +253,7 @@ static int irpwm_send(lua_State *L)
     set_item(items + nitems++, first, second);
   }
 
-  ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
+  // ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
   esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, true);
 
 #ifdef CONFIG_PM_ENABLE
