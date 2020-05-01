@@ -241,7 +241,9 @@ static int irpwm_send(lua_State *L)
 
   rmt_item32_t *items = (rmt_item32_t *)data->pulses;
   int nitems = 0;
-  for (int i = 0; i < MAX_PULSES/2; i++) {
+  // I don't know why but the first pulse is always halved so insert some dummy data
+  set_item(items + nitems++, -500, -500);
+  for (int i = 0; i < MAX_PULSES; i++) {
     lua_rawgeti(L, 2, i + 1);
     int first = lua_tointeger(L, -1);
     lua_rawgeti(L, 2, i + 2);
