@@ -270,9 +270,25 @@ static int irpwm_send(lua_State *L)
 static int irpwm_listen(lua_State* L)
 {
   int gpio = luaL_checkint(L, 1);
-  lua_settop(L, 2);
-
   irpwm_data* data = dataForPin(L, gpio);
+
+  if (lua_isnoneornil(L, 2)) {
+    if (data->timer_ref != LUA_REFNIL) {
+      lua_rawgeti(L, LUA_REGISTRYINDEX, data->timer_ref);
+      luaL_callmeta(L, -1, "unregister");
+      luaL_unref(L, LUA_REGISTRYINDEX, data->timer_ref);
+      data->timer_ref = LUA_REFNIL;
+    }
+    if (data->callback_ref != LUA_REFNIL) {
+      luaL_unref(L, LUA_REGISTRYINDEX, data->callback_ref);
+      data->callback_ref = LUA_REFNIL;
+    }
+    check_err(L, gpio_intr_disable(gpio));
+    check_err(L, gpio_isr_handler_remove(gpio));
+    return 0;
+  }
+
+  lua_settop(L, 2);
 
   check_err(L, gpio_intr_disable(gpio));
 
@@ -329,26 +345,8 @@ static int irpwm_not32(lua_State* L)
   return 1;
 }
 
-// This is a hack, needs to be replaced by an idle timer
-static int irpwm_gather(lua_State* L)
-{
-  int gpio = luaL_checkint(L, 1);
-  check_err(L, gpio_intr_disable(gpio));
-  // irpwm_data* data = &g_data; // TODO
-  irpwm_data* data = dataForPin(L, gpio);
-  lua_createtable(L, data->count, 0);
-  for (int i = 0; i < data->count; i++) {
-    lua_pushinteger(L, data->pulses[i]);
-    lua_rawseti(L, -2, i + 1);
-  }
-  data->count = 0;
-  check_err(L, gpio_intr_enable(gpio));
-  return 1;
-}
-
 LROT_BEGIN(irpwm)
   LROT_FUNCENTRY(listen, irpwm_listen)
-  LROT_FUNCENTRY(gather, irpwm_gather)
   LROT_FUNCENTRY(txconfig, irpwm_txconfig)
   LROT_FUNCENTRY(send, irpwm_send)
   LROT_FUNCENTRY(and32, irpwm_and32)
