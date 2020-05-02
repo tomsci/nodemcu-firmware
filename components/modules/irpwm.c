@@ -20,25 +20,27 @@
 
 #define MAX_PULSES 200
 #define IDLE_TIME 200000 // microseconds
-
-#define PULSE_MAX INT32_MAX
-#define PULSE_MIN INT32_MIN
+#define MAX_RMT_ITEMS (MAX_PULSES / 2) // Because pulse buffers are 16-bit and rmt_item32_t is 32-bit
 
 // Ideally and theoretically this would be 80 to give us a tick of 1 microsecond
 // (80MHz / 80 = 1us) meaning no translation of times to ticks would be
 // required. However for some reason it has to be half that, ie 40 not 80. But
 // then we need to make the tick 4 times longer so that our maximum time period
 // of ~100ms will fit in a 15-bit number of ticks. Hence our ticks are 4us.
-#define CLK_DIV 40 * 4
+#define CLK_DIV (40 * 4)
 #define US_TO_TICKS(val) ((val) / 4)
 #define TICKS_TO_US(val) ((val) * 4)
+
+// These are in microseconds
+#define PULSE_MAX TICKS_TO_US(INT16_MAX)
+#define PULSE_MIN TICKS_TO_US(INT16_MIN)
 
 typedef struct irpwm_data
 {
   uint64_t last_time;
-  int32_t buf1[MAX_PULSES];
-  int32_t buf2[MAX_PULSES];
-  int32_t *pulses; // Points to either buf1 or buf2
+  int16_t buf1[MAX_PULSES];
+  int16_t buf2[MAX_PULSES];
+  int16_t *pulses; // Points to either buf1 or buf2
   uint8_t count;
   uint8_t gpio;
   uint8_t channel; // rmt_channel_t
@@ -46,7 +48,7 @@ typedef struct irpwm_data
   int timer_ref;
   int callback_ref;
 #ifdef CONFIG_PM_ENABLE
-    esp_pm_lock_handle_t pm_lock;
+  esp_pm_lock_handle_t pm_lock;
 #endif
 } irpwm_data;
 
@@ -148,7 +150,7 @@ static void irpwm_isr(void *ctx)
     } else if (delta < PULSE_MIN) {
       delta = PULSE_MIN;
     }
-    data->pulses[data->count++] = (int32_t)(delta);
+    data->pulses[data->count++] = (int16_t)(US_TO_TICKS(delta));
     data->last_time = t;
   }
 }
@@ -175,7 +177,7 @@ static int timer_tick(lua_State *L)
     irpwm_data *data = (irpwm_data *)ptr;
     check_err(L, gpio_intr_disable(data->gpio));
     uint8_t count = data->count;
-    int32_t *buf = data->pulses;
+    int16_t *buf = data->pulses;
     data->pulses = (buf == data->buf1) ? data->buf2 : data->buf1;
     data->count = 0;
     check_err(L, gpio_intr_enable(data->gpio));
@@ -184,7 +186,7 @@ static int timer_tick(lua_State *L)
     lua_rawgeti(L, LUA_REGISTRYINDEX, data->callback_ref);
     lua_createtable(L, count, 0);
     for (int i = 0; i < count; i++) {
-      lua_pushinteger(L, buf[i]);
+      lua_pushinteger(L, TICKS_TO_US((int)buf[i]));
       lua_rawseti(L, -2, i + 1);
     }
     lua_call(L, 1, 0);
@@ -305,7 +307,7 @@ static int irpwm_send(lua_State *L)
   rmt_item32_t *items = (rmt_item32_t *)data->buf1;
   // I don't know why but the first pulse is always halved so insert some dummy data
   set_item(items, -500, -500);
-  int nitems = 1 + populate_items(L, 2, items + 1, MAX_PULSES - 1);
+  int nitems = 1 + populate_items(L, 2, items + 1, MAX_RMT_ITEMS - 1);
 
   // ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
   esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, true);
@@ -363,13 +365,13 @@ static int irpwm_sendasync(lua_State *L)
   rmt_item32_t *items = (rmt_item32_t *)data->buf1;
   // I don't know why but the first pulse is always halved so insert some dummy data
   set_item(items, -500, -500);
-  int nitems = 1 + populate_items(L, 2, items + 1, MAX_PULSES - 1);
+  int nitems = 1 + populate_items(L, 2, items + 1, MAX_RMT_ITEMS - 1);
 
   if (lua_isnoneornil(L, 3)) {
     data->count = 0;
   } else {
     rmt_item32_t *reps = (rmt_item32_t *)data->buf2;
-    data->count = populate_items(L, 3, reps, MAX_PULSES);
+    data->count = populate_items(L, 3, reps, MAX_RMT_ITEMS);
   }
 
   if (!tx_end_task) {
