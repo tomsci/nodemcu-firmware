@@ -18,18 +18,18 @@
 #include <driver/gpio.h>
 #include "task/task.h"
 
-#define MAX_PULSES 200
+#define MAX_PULSES 252
 #define IDLE_TIME 200000 // microseconds
 #define MAX_RMT_ITEMS (MAX_PULSES / 2) // Because pulse buffers are 16-bit and rmt_item32_t is 32-bit
 
-// Ideally and theoretically this would be 80 to give us a tick of 1 microsecond
-// (80MHz / 80 = 1us) meaning no translation of times to ticks would be
-// required. However for some reason it has to be half that, ie 40 not 80. But
-// then we need to make the tick 4 times longer so that our maximum time period
-// of ~100ms will fit in a 15-bit number of ticks. Hence our ticks are 4us.
-#define CLK_DIV (40 * 4)
-#define US_TO_TICKS(val) ((val) / 4)
-#define TICKS_TO_US(val) ((val) * 4)
+// We set CLK_DIV to 80 to give us a tick of 1 microsecond (80MHz / 80 = 1us)
+// meaning no translation of times to ticks is required. There are however still
+// conversion macros in case we need to revisit that again in the future.
+#define CLK_DIV (80)
+#define US_TO_TICKS(val) (val)
+#define TICKS_TO_US(val) (val)
+
+#define DBG(...) ESP_LOGW("irpwm", __VA_ARGS__)
 
 // These are in microseconds
 #define PULSE_MAX TICKS_TO_US(INT16_MAX)
@@ -117,8 +117,7 @@ static void freeData(lua_State* L, irpwm_data *data)
     data->pm_lock = 0;
   }
 #endif
-  lua_pushlightuserdata(L, &dataForPin);
-  lua_rawget(L, LUA_REGISTRYINDEX);
+  push_data_table(L);
   lua_pushnil(L);
   lua_rawseti(L, -2, data->gpio);
   lua_pop(L, 1); // table
@@ -248,49 +247,78 @@ static int irpwm_txconfig(lua_State *L)
   config.tx_config.idle_level = 0;
   config.tx_config.idle_output_en = true;
 
-  // ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
-
   check_err(L, rmt_config(&config));
   data->channel = config.channel;
   check_err(L, rmt_driver_install(config.channel, 0, 0));
   return 0;
 }
 
-static inline void set_item(rmt_item32_t *item, int first, int second)
+static inline void set_item0(rmt_item32_t *item, int val)
 {
-  if (first > 0) {
+  if (val > 0) {
     item->level0 = 1;
-    item->duration0 = US_TO_TICKS(first);
+    item->duration0 = US_TO_TICKS(val);
   } else {
     item->level0 = 0;
-    item->duration0 = US_TO_TICKS(-first);
-  }
-
-  if (second > 0) {
-    item->level1 = 1;
-    item->duration1 = US_TO_TICKS(second);
-  } else {
-    item->level1 = 0;
-    item->duration1 = US_TO_TICKS(-second);
+    item->duration0 = US_TO_TICKS(-val);
   }
 }
 
+static inline void set_item1(rmt_item32_t *item, int val)
+{
+  if (val > 0) {
+    item->level1 = 1;
+    item->duration1 = US_TO_TICKS(val);
+  } else {
+    item->level1 = 0;
+    item->duration1 = US_TO_TICKS(-val);
+  }
+}
+
+static void push_item(rmt_item32_t **ptr, const rmt_item32_t* endptr, int val)
+{
+  if ((*ptr)->val) {
+    set_item1(*ptr, val);
+    *ptr += 1;
+    if (*ptr != endptr) {
+      (*ptr)->val = 0;
+    }
+  } else {
+    set_item0(*ptr, val);
+  }
+}
+
+static const int kMaxPulseLength = TICKS_TO_US(32767); // in microseconds
+
 static int populate_items(lua_State *L, int idx, rmt_item32_t *items, int max_items)
 {
-  int nitems = 0;
-  for (int i = 0; i < max_items; i++) {
-    lua_rawgeti(L, idx, i + 1);
-    int first = lua_tointeger(L, -1);
-    lua_rawgeti(L, idx, i + 2);
-    int second = lua_tointeger(L, -1);
-    lua_pop(L, 2);
-    if (!first || !second) {
+  rmt_item32_t* item_ptr = items;
+  item_ptr->val = 0;
+  const rmt_item32_t* endp = items + max_items;
+  for (int i = 1; item_ptr != endp; i++) {
+    lua_rawgeti(L, idx, i);
+    int val = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    if (val == 0) {
       break;
     }
-    set_item(items + nitems, first, second);
-    nitems++;
+
+    // Handle the case where a pulse is too long to fit in a single 15-bit
+    // rmt_item32_t duration by splitting it up
+    int sign = val < 0 ? -1 : 1;
+    int absval = val * sign;
+    while (absval > 0 && item_ptr != endp) {
+      int chunk = absval < kMaxPulseLength ? absval : kMaxPulseLength;
+      push_item(&item_ptr, endp, chunk * sign);
+      absval -= chunk;
+    }
   }
-  return nitems;
+
+  if (item_ptr != endp && item_ptr->val) {
+    item_ptr++;
+  }
+
+  return (int)(item_ptr - items);
 }
 
 
@@ -305,11 +333,7 @@ static int irpwm_send(lua_State *L)
 #endif
 
   rmt_item32_t *items = (rmt_item32_t *)data->buf1;
-  // I don't know why but the first pulse is always halved so insert some dummy data
-  set_item(items, -500, -500);
-  int nitems = 1 + populate_items(L, 2, items + 1, MAX_RMT_ITEMS - 1);
-
-  // ESP_LOGI("irpwm", "APB_CLK frequency = %d", rtc_clk_apb_freq_get());
+  int nitems = populate_items(L, 2, items, MAX_RMT_ITEMS);
   esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, true);
 
 #ifdef CONFIG_PM_ENABLE
@@ -322,6 +346,7 @@ static int irpwm_send(lua_State *L)
 
 static void irpwm_tx_end_task(task_param_t param, task_prio_t prio)
 {
+  // DBG("+irpwm_tx_end_task");
   rmt_channel_t channel = (rmt_channel_t)param;
   irpwm_data *data = dataForChannel(lua_getstate(), channel);
   if (data && data->count) {
@@ -337,6 +362,7 @@ static void irpwm_tx_end_task(task_param_t param, task_prio_t prio)
 #endif
     data->async_sending = 0;
   }
+  // DBG("-irpwm_tx_end_task");
 }
 
 static task_handle_t tx_end_task = 0;
@@ -350,6 +376,7 @@ static void irpwm_tx_end(rmt_channel_t channel, void * arg)
 // irpwm.sendasync(gpio, pulses, [repeatpulses])
 static int irpwm_sendasync(lua_State *L)
 {
+  // DBG("+irpwm_sendasync");
   int gpio = luaL_checkint(L, 1);
   irpwm_data* data = dataForPin(L, gpio);
   if (data->async_sending) {
@@ -363,9 +390,7 @@ static int irpwm_sendasync(lua_State *L)
 
   // Use buf1 for send pulses, buf2 for repeats
   rmt_item32_t *items = (rmt_item32_t *)data->buf1;
-  // I don't know why but the first pulse is always halved so insert some dummy data
-  set_item(items, -500, -500);
-  int nitems = 1 + populate_items(L, 2, items + 1, MAX_RMT_ITEMS - 1);
+  int nitems = populate_items(L, 2, items, MAX_RMT_ITEMS);
 
   if (lua_isnoneornil(L, 3)) {
     data->count = 0;
@@ -377,7 +402,6 @@ static int irpwm_sendasync(lua_State *L)
   if (!tx_end_task) {
     tx_end_task = task_get_id(irpwm_tx_end_task);
   }
-
   rmt_register_tx_end_callback(irpwm_tx_end, NULL);
   esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, false);
 
@@ -389,12 +413,14 @@ static int irpwm_sendasync(lua_State *L)
 #endif
 
   check_err(L, err);
+  // DBG("-irpwm_sendasync");
   return 0;
 }
 
 // irpwm.stopsend(gpio)
 static int irpwm_stopsend(lua_State *L)
 {
+  // DBG("+stopsend");
   int gpio = luaL_checkint(L, 1);
   irpwm_data* data = dataForPin(L, gpio);
   data->count = 0; // Prevents any further repeats
@@ -407,6 +433,7 @@ static int irpwm_stopsend(lua_State *L)
 #endif
     data->async_sending = 0;
   }
+  // DBG("-stopsend");
   return 0;
 }
 
