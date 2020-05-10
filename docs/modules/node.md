@@ -117,6 +117,7 @@ Note that the `gpio.wakeup()` API has no effect on deep sleep wakeup.
     - a list of GPIOs. These must all be RTC-capable.
     - `level`. Whether to trigger when any of the GPIOs are high (`level=1`, which is the default if not specified), or when all the GPIOs are low (`level=0`).
     - `pull`. Boolean, whether to keep powering the internal pullup/pulldown resistors. Default is `false` if not specified.
+    - `touch`. Boolean, whether to trigger wakeup from any previously-configured touchpads. Default is `false` if not specified.
 
 #### Returns
 Does not return.

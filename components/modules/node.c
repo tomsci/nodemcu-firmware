@@ -116,6 +116,12 @@ static int node_dsleeps (lua_State *L)
         return luaL_error(L, "Error %d returned from esp32", err);
       }
     }
+    lua_getfield(L, 2, "touch");
+    bool touch = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    if (touch) {
+      esp_sleep_enable_touchpad_wakeup();
+    }
   } else if (!lua_isnoneornil(L, 2)) {
     luaL_argerror(L, 2, "Expected table");
   }
