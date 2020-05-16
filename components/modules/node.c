@@ -271,6 +271,19 @@ enum ExtendedReason
   ExtReasonExternalReset = 6,
 };
 
+static const uint8_t kTouchGpios[] = {
+  TOUCH_PAD_NUM0_GPIO_NUM,
+  TOUCH_PAD_NUM1_GPIO_NUM,
+  TOUCH_PAD_NUM2_GPIO_NUM,
+  TOUCH_PAD_NUM3_GPIO_NUM,
+  TOUCH_PAD_NUM4_GPIO_NUM,
+  TOUCH_PAD_NUM5_GPIO_NUM,
+  TOUCH_PAD_NUM6_GPIO_NUM,
+  TOUCH_PAD_NUM7_GPIO_NUM,
+  TOUCH_PAD_NUM8_GPIO_NUM,
+  TOUCH_PAD_NUM9_GPIO_NUM,
+};
+
 static int node_bootreason (lua_State *L)
 {
   int raw, extended;
@@ -323,6 +336,16 @@ static int node_bootreason (lua_State *L)
       lua_pushinteger(L, (lua_Integer)lo);
       lua_pushinteger(L, (lua_Integer)hi);
       return 4;
+    } else if (cause == ESP_SLEEP_WAKEUP_TOUCHPAD) {
+      touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
+      if (pad >= 0 && pad < sizeof(kTouchGpios)) {
+        uint64_t gpio_mask = 1ULL << kTouchGpios[pad];
+        uint32_t lo = (uint32_t)gpio_mask;
+        uint32_t hi = (uint32_t)(gpio_mask >> 32);
+        lua_pushinteger(L, (lua_Integer)lo);
+        lua_pushinteger(L, (lua_Integer)hi);
+        return 4;
+      }
     }
   }
   return 2;

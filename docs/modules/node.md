@@ -32,6 +32,8 @@ In case of extended reset cause 3 (exception reset), additional values are retur
 
 On the esp32 if the extended reset cause is 5 (wake from deep sleep) and the wakeup was caused by a GPIO, then two additional values are returned which are a bitmask of the GPIO(s) that triggered the wakeup. The third value represents GPIOs 0-31 and the fourth value is for GPIOs 32 and above. For example the result for a wake from sleep caused by GPIO 31 would be `3, 5, 0x80000000, 0` (on a build with `LUA_NUMBER_INTEGRAL` defined. Use `bit.isset(val, 31)` to check for GPIO 31 being set in a way which works regardless of whether it is an integral build or not) A wakeup caused by GPIO 33 would return `3, 5, 0, 2`.
 
+On the esp32 if the extended reset cause is 5 (wake from deep sleep) and the wakeup was caused by a touch pad event, a bitmask of the pin which triggered the wakeup is returned in results 3 and 4, in the same way as GPIO-triggered wakeups are returned (see above). Note this is the _gpio_, not the touch pad id, for example a wakeup cause by a touch on T0 (GPIO 4) would return `3, 5, 16, 0` (because `16` is `1 << 4`). Note that configuring the touch module clears the boot reason, meaning the underlying SDK API will assert if you call this function after configuring touch - therefore if you are intending to use a touch pin for wakeup, you must ensure to call `node.bootreason()` _before_ configuring the touch module.
+
 #### Syntax
 `node.bootreason()`
 
