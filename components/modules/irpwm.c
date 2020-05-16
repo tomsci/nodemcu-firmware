@@ -1,4 +1,3 @@
-
 #include "module.h"
 #include "lauxlib.h"
 #include <string.h>
@@ -385,8 +384,8 @@ static int irpwm_sendasync(lua_State *L)
 
 #ifdef CONFIG_PM_ENABLE
   check_err(L, esp_pm_lock_acquire(data->pm_lock));
-  data->async_sending = 1;
 #endif
+  data->async_sending = 1;
 
   // Use buf1 for send pulses, buf2 for repeats
   rmt_item32_t *items = (rmt_item32_t *)data->buf1;
@@ -405,12 +404,12 @@ static int irpwm_sendasync(lua_State *L)
   rmt_register_tx_end_callback(irpwm_tx_end, NULL);
   esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, false);
 
-#ifdef CONFIG_PM_ENABLE
   if (err) {
+#ifdef CONFIG_PM_ENABLE
     esp_pm_lock_release(data->pm_lock);
+#endif
     data->async_sending = 0;
   }
-#endif
 
   check_err(L, err);
   // DBG("-irpwm_sendasync");
@@ -498,34 +497,12 @@ static int irpwm_listen(lua_State* L)
   return 0;
 }
 
-// bit.band() can't handle top-bit-set numbers because casting a double whose
-// value > INT_MAX to an int results in INT_MAX, and band() is written in terms
-// of lua_Integers which are generally 32-bit signed on esp32.
-static int irpwm_and32(lua_State* L)
-{
-  uint32_t x = (uint32_t)luaL_checknumber(L, 1);
-  uint32_t y = (uint32_t)luaL_checknumber(L, 2);
-  uint32_t result = x & y;
-  lua_pushnumber(L, result);
-  return 1;
-}
-
-static int irpwm_not32(lua_State* L)
-{
-  uint32_t x = (uint32_t)luaL_checknumber(L, 1);
-  uint32_t result = ~x;
-  lua_pushnumber(L, result);
-  return 1;
-}
-
 LROT_BEGIN(irpwm)
   LROT_FUNCENTRY(listen, irpwm_listen)
   LROT_FUNCENTRY(txconfig, irpwm_txconfig)
   LROT_FUNCENTRY(send, irpwm_send)
   LROT_FUNCENTRY(sendasync, irpwm_sendasync)
   LROT_FUNCENTRY(stopsend, irpwm_stopsend)
-  LROT_FUNCENTRY(and32, irpwm_and32)
-  LROT_FUNCENTRY(not32, irpwm_not32)
 LROT_END(irpwm, NULL, 0)
 
 NODEMCU_MODULE(IRPWM, "irpwm", irpwm, NULL);
