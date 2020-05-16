@@ -242,6 +242,12 @@ config LUA_MODULE_TOUCH
   help
       Includes the touch module to use ESP32's built-in touch sensor hardware.
 
+config LUA_MODULE_TURCUTILS
+  bool "TURC Utils module"
+  default "n"
+  help
+      Includes the Tomsci's Universal Remote Control Utils module.
+
 config LUA_MODULE_U8G2
   bool "U8G2 module"
   default "n"
