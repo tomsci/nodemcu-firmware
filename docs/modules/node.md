@@ -92,34 +92,27 @@ dofile("hello.lc")
 
 ## node.dsleep()
 
-Like `node.dsleeps()` but the argument is in microseconds. For any lengthy sleep, it is recommended to use `node.dsleeps()` instead.
+Enters deep sleep mode. When the processor wakes back up depends on the supplied `options`. Unlike light sleep, waking from deep sleep restarts the processor, therefore this API never returns. Wake up can be triggered by a time period, or when a GPIO (or GPIOs) change level, or when a touchpad event occurs. If multiple different wakeup sources are specified, the processor will wake when any of them occur. Use [`node.bootreason()`](#nodebootreason) to determine what caused the wakeup.
 
-## node.dsleeps()
+Only RTC GPIO pins can be used to trigger wake from deep sleep, and they should be configured as inputs prior to calling this API. On the ESP32, the RTC pins are GPIOs 0, 2, 4, 12-15, 25-27, and 32-39. An error will be raised if any of the specified pins are not RTC-capable. If multiple pins are specified and `level=1` (which is the default), the wakeup will occur if *any* of the pins are high. If `level=0` then the wakeup will only occur if *all* the specified pins are low.
 
-Enters deep sleep mode for the given number of seconds then restarts the processor.
-
-This function may also be configured to trigger the restart when one or more input GPIOs have a particular level.
-
-If `secs` is zero or omitted, this API behaves like `node.restart()` and restarts the processor immediately. If `secs` is `-1`, the processor will sleep indefinitely (or until any configured GPIO wakeups occur).
-
-Only RTC GPIO pins can be used to trigger wake from deep sleep. On the ESP32, these are GPIOs 0, 2, 4, 12-15, 25-27, and 32-39. An error will be raised if any of the specified pins are not RTC-capable. If multiple pins are specified and `level=1` (which is the default), the wakeup will occur if _any_ of the pins are high. If `level=0` then the wakeup will only occur if _all_ the specified pins are low.
-
-`node.bootreason()` may be used to determine what caused the restart, and if it was a GPIO then which pin(s).
-
-This API uses the EXT1 wakeup mode which by default powers down RTC peripherals including the internal pullup/pulldown resistors. This means the internal pullups/pulldowns will not function during the sleep. To disable this behavior and keep the pullups/pulldowns active, specify `pull=true`. Any required pullups should be configured in advance using `gpio.config()`.
-
-Note that the `gpio.wakeup()` API has no effect on deep sleep wakeup.
+For compatibility, a number parameter `usecs` can be supplied instead of an `options` table, which is equivalent to `node.dsleep({us = usecs})`.
 
 #### Syntax
-`node.dsleeps(secs[, options])`
+`node.dsleep(usecs)` or `node.dsleep(options)`
 
 #### Parameters
-- `secs` number of seconds to sleep.
-- `options` nil, or a table with any of the following:
-    - a list of GPIOs. These must all be RTC-capable.
-    - `level`. Whether to trigger when any of the GPIOs are high (`level=1`, which is the default if not specified), or when all the GPIOs are low (`level=0`).
-    - `pull`. Boolean, whether to keep powering the internal pullup/pulldown resistors. Default is `false` if not specified.
-    - `touch`. Boolean, whether to trigger wakeup from any previously-configured touchpads. Default is `false` if not specified.
+
+- `options`, a table containing some of:
+    - `secs`, a number of seconds to sleep. This permits longer sleep periods compared to using the `us` parameter.
+    - `us`, a number of microseconds to sleep. If both `secs` and `us` are provided, the values are combined.
+    - `gpio`, a single GPIO number or a list of GPIOs. These pins must all be RTC-capable otherwise an error is raised.
+    - `level`. Whether to trigger when *any* of the GPIOs are high (`level=1`, which is the default if not specified), or when *all* the GPIOs are low (`level=0`).
+    - `isolate`. A list of GPIOs to isolate. Isolating a GPIO disables input, output, pullup, pulldown, and enables hold feature for an RTC IO. Use this function if an RTC IO needs to be disconnected from internal circuits in deep sleep, to minimize leakage current.
+    - `pull`, boolean, whether to keep powering previously-configured internal pullup/pulldown resistors. Default is `false` if not specified.
+    - `touch`, boolean, whether to trigger wakeup from any previously-configured touchpads. Default is `false` if not specified.
+
+If an empty options table is specified, ie no wakeup sources, then the chip will sleep forever with no way to wake it (except for power cycling or triggering the reset pin/button).
 
 #### Returns
 Does not return.
@@ -127,13 +120,13 @@ Does not return.
 #### Example
 ```lua
 -- sleep 10 seconds then reboot
-node.dsleeps(10)
+node.dsleep({ secs = 10 })
 
 -- sleep until 10 seconds have elapsed or either of GPIO 13 or 15 becomes high
-node.dsleeps(10, { 13, 15 })
+node.dsleep({ secs = 10, gpio = { 13, 15 } })
 
--- Sleep forever until GPIO13 is low, and keep its pullup powered
-node.dsleeps(-1, { 13, level=0, pull=true })
+-- Sleep forever until GPIO 13 is low, and keep its pullup powered
+node.dsleep({ gpio = 13, level = 0, pull = true })
 ```
 
 ## node.flashid()
