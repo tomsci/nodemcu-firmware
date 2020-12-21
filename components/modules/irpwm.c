@@ -18,7 +18,7 @@
 #include "task/task.h"
 
 #define MAX_PULSES 252
-#define IDLE_TIME 200000 // microseconds
+#define IDLE_TIME 6000 // microseconds
 #define MAX_RMT_ITEMS (MAX_PULSES / 2) // Because pulse buffers are 16-bit and rmt_item32_t is 32-bit
 
 // We set CLK_DIV to 80 to give us a tick of 1 microsecond (80MHz / 80 = 1us)
@@ -30,17 +30,22 @@
 
 #define DBG(...) ESP_LOGW("irpwm", __VA_ARGS__)
 
-// These are in microseconds
+// Max amount of time (in microseconds) which we can record in pulses buffers
 #define PULSE_MAX TICKS_TO_US(INT16_MAX)
-#define PULSE_MIN TICKS_TO_US(INT16_MIN)
+
+typedef struct irpwm_buf {
+  int32_t first_pulse; // Use a int32_t to handle a long gap since the last pulse sequence
+  int32_t last_pulse; // Ditto
+  int16_t buf[MAX_PULSES]; // buf store ticks
+  uint8_t count; // in pulses
+} irpwm_buf;
 
 typedef struct irpwm_data
 {
-  uint64_t last_time;
-  int16_t buf1[MAX_PULSES];
-  int16_t buf2[MAX_PULSES];
-  int16_t *pulses; // Points to either buf1 or buf2
-  uint8_t count;
+  uint64_t last_time; // last time the ISR fired
+  uint64_t last_rising_time; // last time the GPIO became high (ie when the IR channel potentially went idle)
+  irpwm_buf *current; // points to one of banks
+  irpwm_buf banks[2];
   uint8_t gpio;
   uint8_t channel; // rmt_channel_t
   uint8_t async_sending;
@@ -51,6 +56,8 @@ typedef struct irpwm_data
 #endif
 } irpwm_data;
 
+static task_handle_t tx_end_task = 0;
+static task_handle_t flush_buffer_task = 0;
 
 static void push_data_table(lua_State *L)
 {
@@ -78,7 +85,7 @@ static irpwm_data* dataForPin(lua_State* L, int gpio)
     data->gpio = gpio;
     data->timer_ref = LUA_REFNIL;
     data->callback_ref = LUA_REFNIL;
-    data->pulses = data->buf1;
+    data->current = data->banks;
     lua_rawseti(L, -2, gpio); // pops data
     lua_pop(L, 1); // indextable
     return data;
@@ -122,35 +129,57 @@ static void freeData(lua_State* L, irpwm_data *data)
   lua_pop(L, 1); // table
 }
 
+static irpwm_buf *irpwm_bank_switch(irpwm_data *data)
+{
+  irpwm_buf *prev = data->current;
+  irpwm_buf *next = (prev == data->banks) ? &data->banks[1] : data->banks;
+  next->count = 0;
+  next->first_pulse = 0;
+  next->last_pulse = 0;
+  data->current = next;
+  return prev;
+}
+
 static void irpwm_isr(void *ctx)
 {
   irpwm_data *data = (irpwm_data *)ctx;
-  if (data->count >= MAX_PULSES) {
-    // Stop collecting data but don't overwrite existing
-    return;
-  }
-
   int64_t t = esp_timer_get_time();
-  if (data->last_time == 0) {
-    data->last_time = t;
-  } else {
+  if (data->last_time != 0) {
     int64_t delta = t - data->last_time;
-    if (delta > IDLE_TIME) {
-      //TODO DONE
-      // return;
+    if (delta > IDLE_TIME && data->current->count && data->last_rising_time) {
+      // We're starting a sequence after a sufficiently long idle period,
+      // so switch buffers for the new sequence and post a task to flush the
+      // ex-current buffer
+      data->current->last_pulse = US_TO_TICKS(-delta); // Given last_rising_time is set we know this should be negative
+      irpwm_bank_switch(data);
+      task_post_low(flush_buffer_task, (task_param_t)data);
+      data->last_time = t;
+      return;
     }
+    irpwm_buf* current = data->current;
+    int16_t sign;
     if (gpio_get_level(data->gpio) == 0) {
       // Falling edge
-      delta = -delta;
+      sign = -1;
+      data->last_rising_time = 0;
+    } else {
+      sign = 1;
+      data->last_rising_time = t;
     }
-    if (delta > PULSE_MAX) {
-      delta = PULSE_MAX;
-    } else if (delta < PULSE_MIN) {
-      delta = PULSE_MIN;
+    const int16_t max_val = US_TO_TICKS(sign * PULSE_MAX);
+    int16_t* startp = current->buf + current->count;
+    int16_t* p = startp;
+    int16_t* endp = current->buf + MAX_PULSES;
+    while (delta >= PULSE_MAX && p != endp) {
+      *p++ = max_val;
+      delta -= PULSE_MAX;
     }
-    data->pulses[data->count++] = (int16_t)(US_TO_TICKS(delta));
-    data->last_time = t;
+    if (delta && p != endp) {
+      *p++ = (int16_t)US_TO_TICKS(sign * delta);
+    }
+    current->count += (p - startp);
   }
+  data->last_time = t;
 }
 
 static void check_err(lua_State *L, esp_err_t err)
@@ -164,30 +193,73 @@ static void check_err(lua_State *L, esp_err_t err)
   }
 }
 
+#define samesign16(x, y) (((x) & 0x8000) == ((y) & 0x8000))
+
+static void irpwm_flush_buffer(irpwm_data *data)
+{
+  irpwm_buf* current = ((volatile irpwm_data*)data)->current;
+  irpwm_buf* bank = (current == data->banks) ? data->banks + 1 : data->banks;
+  int count = bank->count;
+  int table_count = count;
+  int first_pulse = bank->first_pulse;
+  if (first_pulse) table_count++;
+  int last_pulse = bank->last_pulse;
+  if (last_pulse) table_count++;
+  int16_t* buf = bank->buf;
+
+  lua_State *L = lua_getstate();
+
+  uint64_t t = esp_timer_get_time();
+  lua_rawgeti(L, LUA_REGISTRYINDEX, data->callback_ref);
+  lua_createtable(L, table_count, 0);
+  int table_idx = 1;
+  if (first_pulse) {
+    lua_pushinteger(L, TICKS_TO_US(first_pulse));
+    lua_rawseti(L, -2, table_idx);
+    table_idx++;
+  }
+
+  for (int i = 0; i < count; i++) {
+    int16_t buf_i = buf[i];
+    int val = (int)buf_i;
+    // Combine any successive values of the same sign into one
+    // (We store them like that because int16_t only lets us store up to 32ms)
+    while (i+1 < count && samesign16(buf_i, buf[i+1])) {
+      val += buf[++i];
+    }
+    lua_pushinteger(L, TICKS_TO_US(val));
+    lua_rawseti(L, -2, table_idx++);
+  }
+
+  if (last_pulse) {
+    lua_pushinteger(L, TICKS_TO_US(last_pulse));
+    lua_rawseti(L, -2, table_idx++);
+  }
+
+  t = esp_timer_get_time() - t;
+  lua_pushinteger(L, (lua_Integer)t);
+  lua_call(L, 2, 0);
+}
+
+static void irpwm_flush_buffer_task(task_param_t param, task_prio_t prio)
+{
+  irpwm_flush_buffer((irpwm_data*)param);
+}
+
 static int timer_tick(lua_State *L)
 {
   // Note this potentially accesses data while ISR is running, hence the volatile
   const void *ptr = lua_touserdata(L, lua_upvalueindex(1));
   volatile irpwm_data *vdata = (volatile irpwm_data *)ptr;
 
-  if (vdata->count && esp_timer_get_time() > vdata->last_time + IDLE_TIME) {
+  if (vdata->current->count && esp_timer_get_time() > vdata->last_time + IDLE_TIME) {
     // Switch buffers quickly with interrupts disabled
+    check_err(L, gpio_intr_disable(vdata->gpio));
     irpwm_data *data = (irpwm_data *)ptr;
-    check_err(L, gpio_intr_disable(data->gpio));
-    uint8_t count = data->count;
-    int16_t *buf = data->pulses;
-    data->pulses = (buf == data->buf1) ? data->buf2 : data->buf1;
-    data->count = 0;
+    irpwm_bank_switch(data);
     check_err(L, gpio_intr_enable(data->gpio));
 
-    // Now we can examine buf at our leisure
-    lua_rawgeti(L, LUA_REGISTRYINDEX, data->callback_ref);
-    lua_createtable(L, count, 0);
-    for (int i = 0; i < count; i++) {
-      lua_pushinteger(L, TICKS_TO_US((int)buf[i]));
-      lua_rawseti(L, -2, i + 1);
-    }
-    lua_call(L, 1, 0);
+    irpwm_flush_buffer(data);
   }
 
   return 0;
@@ -320,38 +392,16 @@ static int populate_items(lua_State *L, int idx, rmt_item32_t *items, int max_it
   return (int)(item_ptr - items);
 }
 
-
-// irpwm.send(gpio, pulses)
-static int irpwm_send(lua_State *L)
-{
-  int gpio = luaL_checkint(L, 1);
-  irpwm_data* data = dataForPin(L, gpio);
-
-#ifdef CONFIG_PM_ENABLE
-  check_err(L, esp_pm_lock_acquire(data->pm_lock));
-#endif
-
-  rmt_item32_t *items = (rmt_item32_t *)data->buf1;
-  int nitems = populate_items(L, 2, items, MAX_RMT_ITEMS);
-  esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, true);
-
-#ifdef CONFIG_PM_ENABLE
-  esp_pm_lock_release(data->pm_lock);
-#endif
-
-  check_err(L, err);
-  return 0;
-}
-
 static void irpwm_tx_end_task(task_param_t param, task_prio_t prio)
 {
   // DBG("+irpwm_tx_end_task");
   rmt_channel_t channel = (rmt_channel_t)param;
   irpwm_data *data = dataForChannel(lua_getstate(), channel);
-  if (data && data->count) {
+  irpwm_buf *repeats = data ? &data->banks[1] : NULL;
+  if (repeats && repeats->count) {
     // Indicates there's a repeat to send
-    rmt_item32_t *items = (rmt_item32_t *)data->buf2;
-    esp_err_t err = rmt_write_items(channel, items, data->count, false);
+    rmt_item32_t *items = (rmt_item32_t *)repeats->buf;
+    esp_err_t err = rmt_write_items(channel, items, repeats->count, false);
     if (err) {
       ESP_LOGW("irpwm", "Error from repeat rmt_write_items: %d", err);
     }
@@ -364,20 +414,20 @@ static void irpwm_tx_end_task(task_param_t param, task_prio_t prio)
   // DBG("-irpwm_tx_end_task");
 }
 
-static task_handle_t tx_end_task = 0;
-
 static void irpwm_tx_end(rmt_channel_t channel, void * arg)
 {
   // This is called in ISR context so post a task to handle completion
   task_post_low(tx_end_task, channel);
 }
 
-// irpwm.sendasync(gpio, pulses, [repeatpulses])
-static int irpwm_sendasync(lua_State *L)
+// irpwm.send(gpio, pulses [, repeats])
+// repeats being set implies sending asynchronously
+static int irpwm_send(lua_State *L)
 {
-  // DBG("+irpwm_sendasync");
   int gpio = luaL_checkint(L, 1);
   irpwm_data* data = dataForPin(L, gpio);
+  bool async = !lua_isnoneornil(L, 3);
+
   if (data->async_sending) {
     return luaL_error(L, "Cannot send again before the previous send has completed");
   }
@@ -385,26 +435,30 @@ static int irpwm_sendasync(lua_State *L)
 #ifdef CONFIG_PM_ENABLE
   check_err(L, esp_pm_lock_acquire(data->pm_lock));
 #endif
-  data->async_sending = 1;
 
-  // Use buf1 for send pulses, buf2 for repeats
-  rmt_item32_t *items = (rmt_item32_t *)data->buf1;
+  if (async) {
+      data->async_sending = 1;
+  }
+
+  // Use bank 0 for send pulses, bank 1 for repeats
+  rmt_item32_t *items = (rmt_item32_t *)data->banks[0].buf;
   int nitems = populate_items(L, 2, items, MAX_RMT_ITEMS);
 
-  if (lua_isnoneornil(L, 3)) {
-    data->count = 0;
+  irpwm_buf* repeats = &data->banks[1];
+  if (async) {
+    rmt_item32_t *reps = (rmt_item32_t *)repeats->buf;
+    repeats->count = populate_items(L, 3, reps, MAX_RMT_ITEMS);
+    if (!tx_end_task) {
+      tx_end_task = task_get_id(irpwm_tx_end_task);
+    }
+    rmt_register_tx_end_callback(irpwm_tx_end, NULL);
   } else {
-    rmt_item32_t *reps = (rmt_item32_t *)data->buf2;
-    data->count = populate_items(L, 3, reps, MAX_RMT_ITEMS);
+    repeats->count = 0;
   }
 
-  if (!tx_end_task) {
-    tx_end_task = task_get_id(irpwm_tx_end_task);
-  }
-  rmt_register_tx_end_callback(irpwm_tx_end, NULL);
-  esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, false);
+  esp_err_t err = rmt_write_items((rmt_channel_t)data->channel, items, nitems, !async);
 
-  if (err) {
+  if (!async || err) {
 #ifdef CONFIG_PM_ENABLE
     esp_pm_lock_release(data->pm_lock);
 #endif
@@ -412,7 +466,6 @@ static int irpwm_sendasync(lua_State *L)
   }
 
   check_err(L, err);
-  // DBG("-irpwm_sendasync");
   return 0;
 }
 
@@ -422,7 +475,7 @@ static int irpwm_stopsend(lua_State *L)
   // DBG("+stopsend");
   int gpio = luaL_checkint(L, 1);
   irpwm_data* data = dataForPin(L, gpio);
-  data->count = 0; // Prevents any further repeats
+  data->banks[1].count = 0; // Prevents any further repeats
   check_err(L, rmt_wait_tx_done(data->channel, portMAX_DELAY));
   if (data->async_sending) {
     // Ie if the irpwm_tx_end_task hasn't run yet, manually release the lock
@@ -465,12 +518,16 @@ static int irpwm_listen(lua_State* L)
   check_err(L, gpio_intr_disable(gpio));
 
   data->gpio = gpio;
-  data->count = 0;
+  irpwm_bank_switch(data);
   data->last_time = 0;
 
   check_err(L, gpio_set_intr_type(gpio, GPIO_INTR_ANYEDGE));
   check_err(L, gpio_isr_handler_add(gpio, irpwm_isr, (void *)data));
   check_err(L, gpio_intr_enable(gpio));
+
+  if (!flush_buffer_task) {
+    flush_buffer_task = task_get_id(irpwm_flush_buffer_task);
+  }
 
   lua_getglobal(L, "tmr"); // stack position 3
   lua_getfield(L, -1, "create");
@@ -501,7 +558,6 @@ LROT_BEGIN(irpwm)
   LROT_FUNCENTRY(listen, irpwm_listen)
   LROT_FUNCENTRY(txconfig, irpwm_txconfig)
   LROT_FUNCENTRY(send, irpwm_send)
-  LROT_FUNCENTRY(sendasync, irpwm_sendasync)
   LROT_FUNCENTRY(stopsend, irpwm_stopsend)
 LROT_END(irpwm, NULL, 0)
 
