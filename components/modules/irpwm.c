@@ -16,6 +16,7 @@
 #include <esp_timer.h>
 #include <driver/gpio.h>
 #include "task/task.h"
+#include "turcutils.h"
 
 #define MAX_PULSES 252
 #define IDLE_TIME 6000 // microseconds
@@ -34,7 +35,8 @@
 #define PULSE_MAX TICKS_TO_US(INT16_MAX)
 
 typedef struct irpwm_buf {
-  int32_t first_pulse; // Use a int32_t to handle a long gap since the last pulse sequence
+  int64_t start_time;
+  // int32_t first_pulse; // Use a int32_t to handle a long gap since the last pulse sequence
   int32_t last_pulse; // Ditto
   int16_t buf[MAX_PULSES]; // buf store ticks
   uint8_t count; // in pulses
@@ -133,9 +135,10 @@ static irpwm_buf *irpwm_bank_switch(irpwm_data *data)
 {
   irpwm_buf *prev = data->current;
   irpwm_buf *next = (prev == data->banks) ? &data->banks[1] : data->banks;
-  next->count = 0;
-  next->first_pulse = 0;
+  next->start_time = 0;
+  // next->first_pulse = 0;
   next->last_pulse = 0;
+  next->count = 0;
   data->current = next;
   return prev;
 }
@@ -157,6 +160,10 @@ static void irpwm_isr(void *ctx)
       return;
     }
     irpwm_buf* current = data->current;
+    if (current->count == 0) {
+      current->start_time = data->last_time;
+    }
+
     int16_t sign;
     if (gpio_get_level(data->gpio) == 0) {
       // Falling edge
@@ -201,7 +208,7 @@ static void irpwm_flush_buffer(irpwm_data *data)
   irpwm_buf* bank = (current == data->banks) ? data->banks + 1 : data->banks;
   int count = bank->count;
   int table_count = count;
-  int first_pulse = bank->first_pulse;
+  int first_pulse = 0; //bank->first_pulse;
   if (first_pulse) table_count++;
   int last_pulse = bank->last_pulse;
   if (last_pulse) table_count++;
@@ -211,7 +218,7 @@ static void irpwm_flush_buffer(irpwm_data *data)
 
   uint64_t t = esp_timer_get_time();
   lua_rawgeti(L, LUA_REGISTRYINDEX, data->callback_ref);
-  lua_createtable(L, table_count, 0);
+  lua_createtable(L, table_count, 1);
   int table_idx = 1;
   if (first_pulse) {
     lua_pushinteger(L, TICKS_TO_US(first_pulse));
@@ -236,9 +243,12 @@ static void irpwm_flush_buffer(irpwm_data *data)
     lua_rawseti(L, -2, table_idx++);
   }
 
+  turcutils_pushint64(L, bank->start_time);
+  lua_setfield(L, -2, "starttime");
+
   t = esp_timer_get_time() - t;
   lua_pushinteger(L, (lua_Integer)t);
-  lua_call(L, 2, 0);
+  lua_call(L, 2, 0); // callback(data, flush_buffer_time)
 }
 
 static void irpwm_flush_buffer_task(task_param_t param, task_prio_t prio)
@@ -252,10 +262,13 @@ static int timer_tick(lua_State *L)
   const void *ptr = lua_touserdata(L, lua_upvalueindex(1));
   volatile irpwm_data *vdata = (volatile irpwm_data *)ptr;
 
-  if (vdata->current->count && esp_timer_get_time() > vdata->last_time + IDLE_TIME) {
+  int64_t t = esp_timer_get_time();
+  if (vdata->current->count && t > vdata->last_time + IDLE_TIME) {
     // Switch buffers quickly with interrupts disabled
     check_err(L, gpio_intr_disable(vdata->gpio));
     irpwm_data *data = (irpwm_data *)ptr;
+    data->current->last_pulse = US_TO_TICKS(-(t - data->last_time));
+    data->last_time = t;
     irpwm_bank_switch(data);
     check_err(L, gpio_intr_enable(data->gpio));
 
