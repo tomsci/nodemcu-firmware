@@ -31,12 +31,17 @@ void turcutils_pushint64(lua_State* L, int64_t val)
   lua_setmetatable(L, -2);
 }
 
+int64_t turcutils_checkint64(lua_State* L, int idx)
+{
+  return *(int64_t*)luaL_checkudata(L, idx, TURCUTILS_INT64_MT);
+}
+
 static int turcutils_int64(lua_State* L)
 {
   int32_t lo = luaL_checkinteger(L, 1);
-  int32_t hi = luaL_optinteger(L, 2, 0);
   int64_t val;
-  if (hi) {
+  if (!lua_isnoneornil(L, 2)) {
+    int32_t hi = luaL_checkinteger(L, 2);
     // Then lo must be treated as unsigned
     val = (int64_t)(uint32_t)lo + ((int64_t)hi << 32);
   } else {
@@ -48,11 +53,23 @@ static int turcutils_int64(lua_State* L)
 
 static int turcutils_int64_tostring(lua_State* L)
 {
-  int64_t val = *(int64_t*)luaL_checkudata(L, 1, TURCUTILS_INT64_MT);
+  int64_t val = turcutils_checkint64(L, 1);
   char buf[19];
   snprintf(buf, sizeof(buf), "0x%016llX", val);
   lua_pushstring(L, buf);
   return 1;
+}
+
+static int turcutils_int64_toints(lua_State* L)
+{
+  int64_t val = turcutils_checkint64(L, 1);
+  lua_pushinteger(L, (lua_Integer)val);
+  if ((int64_t)(lua_Integer)val == val) {
+    return 1;
+  } else {
+    lua_pushinteger(L, (lua_Integer)(val >> 32));
+    return 2;
+  }
 }
 
 static void turcutils_int64_getargs(lua_State* L, int64_t* args)
@@ -61,7 +78,7 @@ static void turcutils_int64_getargs(lua_State* L, int64_t* args)
     if (lua_type(L, i+1) == LUA_TNUMBER) {
       args[i] = lua_tointeger(L, i+1);
     } else {
-      args[i] = *(int64_t*)luaL_checkudata(L, i+1, TURCUTILS_INT64_MT);
+      args[i] = turcutils_checkint64(L, i+1);
     }
   }
 }
@@ -118,6 +135,7 @@ LROT_BEGIN(turcutils_int64_mt)
   LROT_FUNCENTRY(__lt, turcutils_int64_lt)
   LROT_FUNCENTRY(__le, turcutils_int64_le)
   LROT_FUNCENTRY(__eq, turcutils_int64_eq)
+  LROT_FUNCENTRY(toints, turcutils_int64_toints)
   LROT_FUNCENTRY(__tostring, turcutils_int64_tostring)
   LROT_TABENTRY(__index, turcutils_int64_mt)
 LROT_END(turcutils_int64_mt, NULL, 0)
