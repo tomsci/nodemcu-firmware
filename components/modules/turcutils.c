@@ -99,6 +99,22 @@ static int turcutils_int64_sub(lua_State* L)
   return 1;
 }
 
+static int turcutils_int64_div(lua_State* L)
+{
+  int64_t args[2];
+  turcutils_int64_getargs(L, args);
+  turcutils_pushint64(L, args[0] / args[1]);
+  return 1;
+}
+
+static int turcutils_int64_mul(lua_State* L)
+{
+  int64_t args[2];
+  turcutils_int64_getargs(L, args);
+  turcutils_pushint64(L, args[0] * args[1]);
+  return 1;
+}
+
 static int turcutils_int64_le(lua_State* L)
 {
   int64_t args[2];
@@ -132,6 +148,8 @@ LROT_END(turcutils, NULL, 0)
 LROT_BEGIN(turcutils_int64_mt)
   LROT_FUNCENTRY(__add, turcutils_int64_add)
   LROT_FUNCENTRY(__sub, turcutils_int64_sub)
+  LROT_FUNCENTRY(__div, turcutils_int64_div)
+  LROT_FUNCENTRY(__mul, turcutils_int64_mul)
   LROT_FUNCENTRY(__lt, turcutils_int64_lt)
   LROT_FUNCENTRY(__le, turcutils_int64_le)
   LROT_FUNCENTRY(__eq, turcutils_int64_eq)
