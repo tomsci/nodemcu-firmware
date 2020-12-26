@@ -167,7 +167,8 @@ static void irpwm_isr(void *ctx)
   if (data->last_time != 0) {
     int64_t delta = t - data->last_time;
     irpwm_bank* current = data->current;
-    if (delta > IDLE_TIME && current->count && data->last_rising_time) {
+    const bool bank_empty = current->count == 0 && current->first_pulse == 0;
+    if (delta > IDLE_TIME && !bank_empty && data->last_rising_time) {
       // We're starting a sequence after a sufficiently long idle period,
       // so switch buffers for the new sequence and post a task to flush the
       // ex-current buffer
@@ -177,7 +178,7 @@ static void irpwm_isr(void *ctx)
       data->last_time = t;
       return;
     }
-    if (current->count == 0) {
+    if (bank_empty) {
       current->start_time = data->last_time;
     }
 
@@ -191,7 +192,7 @@ static void irpwm_isr(void *ctx)
       data->last_rising_time = t;
     }
 
-    if (current->count == 0 && current->first_pulse == 0) {
+    if (bank_empty) {
       current->first_pulse = sign * delta;
     } else {
       const int16_t max_val = US_TO_TICKS(sign * PULSE_MAX);
