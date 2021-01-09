@@ -361,6 +361,57 @@ target CPU frequency (number)
 node.setcpufreq(node.CPU80MHZ)
 ```
 
+
+## node.sleep()
+
+Enters light sleep mode, which saves power without losing state. The state of the CPU and peripherals is preserved during light sleep and is resumed once the processor wakes up. When the processor wakes back up depends on the supplied `options`. Wake up from light sleep can be triggered by a time period, or when a GPIO (or GPIOs) change level, when a touchpad event occurs, when data is received on a UART, or by the ULP (ultra low power processor, generally not used by NodeMCU). If multiple different wakeup sources are specified, the processor will wake when any of them occur. The return value of the function can be used to determine which source caused the wakeup. The function does not return until a wakeup occurs (and therefore may not return at all if a wakeup trigger never occurs).
+
+UART buffers are not flushed on entering light sleep, rather they are suspended and resumed on wakeup, meaning that some data written before entering light sleep may not be output over the UART until after wakeup.
+
+Unlike with the `dsleep()` API, _any_ GPIO (not just the RTC-capable pins) may be used to trigger wakeup from light sleep. To configure which GPIOs should trigger wakeup, and under what circumstances, call `gpio.wakeup()` prior to calling `node.sleep()`.
+
+Wakeup from Light sleep can also be triggered by incoming data on UART0 or UART1, (but not UART2) by passing in `uart = 0` or `uart = 1` (or `uart = {0, 1}` to wake on either). Note that the byte(s) which trigger the wakeup are consumed in the process, and will therefore not be seen by the UART after wakeup. Before using uart wakeup for the first time, you must call [`uart.wakeup()`](uart/#uartwakeup) to configure what data should trigger wakeup.
+
+WiFi and Bluetooth must be switched off before entering light sleep, otherwise an error will be thrown. It is not supported to enable gpio wakeups at the same time as either touch or ULP.
+
+#### Syntax
+`node.sleep(options)`
+
+#### Parameters
+- `options`, a table containing some of:
+    - `secs`, a number of seconds to sleep. This permits longer sleep periods compared to using the `us` parameter.
+    - `us`, a number of microseconds to sleep. If both `secs` and `us` are provided, the values are combined.
+    - `gpio`, a boolean, whether to allow wakeup by GPIOs. Default is `false` if not specified.
+    - `touch`, boolean, whether to trigger wakeup from any previously-configured touchpads. Default is `false` if not specified.
+    - `uart`, an integer or list of integers. Which UARTs should trigger wakeup.
+    - `ulp`, a boolean, whether to allow the ULP to trigger wakeup.
+
+If an empty options table is specified, ie no wakeup sources, then the chip will sleep forever with no way to wake it (except for power cycling or triggering the reset pin/button).
+
+#### Returns
+One of `node.wakeup.GPIO`, `node.wakeup.TIMER`, `node.wakeup.TOUCHPAD`, `node.wakeup.UART`, `node.wakeup.ULP`, depending on what triggered the wakeup.
+
+If the wakeup was trigged by a touchpad, the pad id which triggered the wakeup will be returned as a second value (ie `node.wakeup.TOUCHPAD, <padid>`).
+
+#### Example
+```lua
+-- sleep 10 seconds then continue
+node.sleep({ secs = 10 })
+
+-- sleep until 10 seconds have elapsed or either of GPIO 13 or 15 becomes high
+gpio.wakeup(13, gpio.INTR_HIGH)
+gpio.wakeup(15, gpio.INTR_HIGH)
+node.sleep({ secs = 10, gpio = true })
+
+-- Sleep forever until a previously-configured touchpad is touched, or a byte
+-- arrives on UART0.
+uart.wakeup(0, 3)
+reason, pad = node.sleep({ touch = true, uart = 0 })
+if reason == node.WAKEUP_TOUCHPAD then
+  print(string.format("Pad %d was touched!", pad))
+end
+```
+
 ## node.stripdebug()
 
 Controls the amount of debug information kept during [`node.compile()`](#nodecompile), and allows removal of debug information from already compiled Lua code.
