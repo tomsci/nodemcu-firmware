@@ -364,15 +364,19 @@ node.setcpufreq(node.CPU80MHZ)
 
 ## node.sleep()
 
-Enters light sleep mode, which saves power without losing state. The state of the CPU and peripherals is preserved during light sleep and is resumed once the processor wakes up. When the processor wakes back up depends on the supplied `options`. Wake up from light sleep can be triggered by a time period, or when a GPIO (or GPIOs) change level, when a touchpad event occurs, when data is received on a UART, or by the ULP (ultra low power processor, generally not used by NodeMCU). If multiple different wakeup sources are specified, the processor will wake when any of them occur. The return value of the function can be used to determine which source caused the wakeup. The function does not return until a wakeup occurs (and therefore may not return at all if a wakeup trigger never occurs).
+Enters light sleep mode, which saves power without losing state. The state of the CPU and peripherals is preserved during light sleep and is resumed once the processor wakes up. When the processor wakes back up depends on the supplied `options`. Wake up from light sleep can be triggered by a time period, or when a GPIO (or GPIOs) change level, when a touchpad event occurs, when data is received on a UART, or by the ULP (ultra low power processor, generally not used by NodeMCU). If multiple different wakeup sources are specified, the processor will wake when any of them occur. The return value of the function can be used to determine which source caused the wakeup. The function does not return until a wakeup occurs (and therefore may not return at all if a wakeup trigger never happens).
 
 UART buffers are not flushed on entering light sleep, rather they are suspended and resumed on wakeup, meaning that some data written before entering light sleep may not be output over the UART until after wakeup.
 
-Unlike with the `dsleep()` API, _any_ GPIO (not just the RTC-capable pins) may be used to trigger wakeup from light sleep. To configure which GPIOs should trigger wakeup, and under what circumstances, call `gpio.wakeup()` prior to calling `node.sleep()`.
+Timers created with `tmr` will not fire during light sleep, and the time spent sleeping is not factored in to their remaining time. They are paused, and resumed automatically after wakeup. For example, if a timer has 2 seconds remaining when light sleep starts, it will still have 2 seconds remaining after wakeup, regardless of how much time elapsed during the sleep or what triggered the wakeup. The value returned by `node.uptime()` however _is_ updated by however long is spent in light sleep, and can therefore be used to calculate how much time was spent asleep. Although a time period to sleep for can be specified in microseconds, the actual amount of time spent asleep will not be that precise.
 
-Wakeup from Light sleep can also be triggered by incoming data on UART0 or UART1, (but not UART2) by passing in `uart = 0` or `uart = 1` (or `uart = {0, 1}` to wake on either). Note that the byte(s) which trigger the wakeup are consumed in the process, and will therefore not be seen by the UART after wakeup. Before using uart wakeup for the first time, you must call [`uart.wakeup()`](uart/#uartwakeup) to configure what data should trigger wakeup.
+Unlike with the `dsleep()` API, _any_ GPIO (not just the RTC-capable pins) may be used to trigger wakeup from light sleep. To configure which GPIOs should trigger wakeup, and under what circumstances, call [`gpio.wakeup()`](gpio/#gpiowakeup) prior to calling `node.sleep()`. If a GPIO wakeup occurs, then any callbacks configured with `gpio.trig()` will be called as normal after wakeup. In other words, interrupts do not get 'lost' during light sleep, and all other state such as pullups and drive strength is preserved.
 
-WiFi and Bluetooth must be switched off before entering light sleep, otherwise an error will be thrown. It is not supported to enable gpio wakeups at the same time as either touch or ULP.
+Similarly, if `touch = true` is specified and a touch event triggers wakeup, the touch callback will be called as normal after wakeup.
+
+Wakeup from light sleep can also be triggered by incoming data on UART0 or UART1, (but not UART2) by passing in `uart = 0` or `uart = 1` (or `uart = {0, 1}` to wake on either). Note that the byte(s) which trigger the wakeup are consumed in the process, and will therefore not be seen by the UART after wakeup. Before using uart wakeup for the first time, you must call [`uart.wakeup()`](uart/#uartwakeup) to configure what data should trigger wakeup.
+
+WiFi and Bluetooth must be switched off before entering light sleep, otherwise an error will be thrown.
 
 #### Syntax
 `node.sleep(options)`
@@ -383,15 +387,13 @@ WiFi and Bluetooth must be switched off before entering light sleep, otherwise a
     - `us`, a number of microseconds to sleep. If both `secs` and `us` are provided, the values are combined.
     - `gpio`, a boolean, whether to allow wakeup by GPIOs. Default is `false` if not specified.
     - `touch`, boolean, whether to trigger wakeup from any previously-configured touchpads. Default is `false` if not specified.
-    - `uart`, an integer or list of integers. Which UARTs should trigger wakeup.
-    - `ulp`, a boolean, whether to allow the ULP to trigger wakeup.
+    - `uart`, an integer or list of integers. Which UARTs should trigger wakeup. Default is the empty list if not specified.
+    - `ulp`, a boolean, whether to allow the ULP to trigger wakeup. Default is `false` if not specified.
 
-If an empty options table is specified, ie no wakeup sources, then the chip will sleep forever with no way to wake it (except for power cycling or triggering the reset pin/button).
+If an empty options table is specified, ie no wakeup sources, then the chip will light sleep forever with no way to wake it (except for power cycling or triggering the reset pin/button).
 
 #### Returns
 One of `node.wakeup.GPIO`, `node.wakeup.TIMER`, `node.wakeup.TOUCHPAD`, `node.wakeup.UART`, `node.wakeup.ULP`, depending on what triggered the wakeup.
-
-If the wakeup was trigged by a touchpad, the pad id which triggered the wakeup will be returned as a second value (ie `node.wakeup.TOUCHPAD, <padid>`).
 
 #### Example
 ```lua
@@ -411,6 +413,12 @@ if reason == node.WAKEUP_TOUCHPAD then
   print(string.format("Pad %d was touched!", pad))
 end
 ```
+
+#### See also
+- [`node.dsleep()`](#nodedsleep)
+- [`gpio.wakeup()`](gpio/#gpiowakeup)
+- [`uart.wakeup()`](uart/#uartwakeup)
+
 
 ## node.stripdebug()
 

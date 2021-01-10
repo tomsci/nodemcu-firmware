@@ -101,6 +101,15 @@ static int node_sleep (lua_State *L)
   lua_pop(L, 1); // uart
 
   // gpio option: boolean (individual pins are configured in advance with gpio.wakeup())
+
+  // Make sure to do GPIO before touch, because esp_sleep_enable_gpio_wakeup()
+  // seems to think touch is not compatible with GPIO wakeup and will error the
+  // call if you order them the other way round, despite the fact that
+  // esp_sleep_enable_touchpad_wakeup() does not have a similar check, and I've
+  // tested using both GPIO and touch wakeups at once and it works fine for me.
+  // I think this is simply a bug in the Espressif SDK, because sleep_modes.rst
+  // only mentions compatibility issues with touch and EXT0 wakeup, which is
+  // not the same as GPIO wakeup.
   if (opt_checkbool(L, "gpio", false)) {
     err = esp_sleep_enable_gpio_wakeup();
     if (err) {
@@ -139,13 +148,7 @@ static int node_sleep (lua_State *L)
 
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   lua_pushinteger(L, (int)cause);
-  if (cause == ESP_SLEEP_WAKEUP_TOUCHPAD) {
-    touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
-    lua_pushinteger(L, pad);
-    return 2;
-  } else {
-    return 1;
-  }
+  return 1;
 }
 
 
