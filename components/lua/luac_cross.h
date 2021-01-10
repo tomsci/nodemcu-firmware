@@ -20,4 +20,9 @@
 #define ICACHE_RODATA_ATTR
 #endif
 
+// TOMSCI
+#ifndef LUA_NUMBER_INTEGRAL
+#define LUA_NUMBER_INTEGRAL
+#endif
+
 #endif /* luac_cross_h */
