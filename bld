@@ -1,0 +1,9 @@
+export BUILD=~/dev/esp32/build
+export DEST=/media/sf_turc/rom
+
+make MORE_CFLAGS="-DLUA_NUMBER_INTEGRAL" V=99
+cp $BUILD/../sdkconfig $DEST
+cp $BUILD/bootloader/bootloader.bin $DEST
+cp $BUILD/NodeMCU.bin $DEST
+cp $BUILD/NodeMCU.elf $DEST
+cp $BUILD/partitions-tomsci.bin $DEST/partitions.bin
