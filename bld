@@ -1,7 +1,13 @@
 export BUILD=~/dev/esp32/build
 export DEST=/media/sf_turc/rom
 
-make MORE_CFLAGS="-DLUA_NUMBER_INTEGRAL" V=99
+# That --match arg can't be the best way to do it, but hey it works thanks Mr StackOverflow
+export VER=`git describe --match=NeVeRmAtCh --always --abbrev=8 --dirty`
+
+# Needed so that the potentially-updated BUILD_DATE is picked up
+touch components/lua/lua.c
+
+make MORE_CFLAGS="-DLUA_NUMBER_INTEGRAL -DBUILD_DATE='\"'$VER'\"'" V=99
 cp $BUILD/../sdkconfig $DEST
 cp $BUILD/bootloader/bootloader.bin $DEST
 cp $BUILD/NodeMCU.bin $DEST
