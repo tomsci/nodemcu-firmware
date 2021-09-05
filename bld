@@ -12,4 +12,4 @@ cp $BUILD/../sdkconfig $DEST
 cp $BUILD/bootloader/bootloader.bin $DEST
 cp $BUILD/NodeMCU.bin $DEST
 cp $BUILD/NodeMCU.elf $DEST
-cp $BUILD/partitions-tomsci.bin $DEST/partitions.bin
+cp $BUILD/partitions.bin $DEST/partitions.bin
