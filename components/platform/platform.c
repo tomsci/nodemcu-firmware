@@ -15,9 +15,14 @@
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 #include "driver/usb_serial_jtag.h"
 #include "esp_vfs_usb_serial_jtag.h"
+#endif
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_USB_CDC
 #include "esp_vfs_dev.h"
 #include <fcntl.h>
 #include <errno.h>
+#endif
+#if CONFIG_ESP_CONSOLE_USB_CDC
+#include "esp_vfs_cdcacm.h"
 #endif
 
 int platform_init (void)
@@ -83,7 +88,7 @@ uart_status_t uart_status[NUM_UART];
 task_handle_t uart_event_task_id = 0;
 SemaphoreHandle_t sem = NULL;
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_USB_CDC
 task_handle_t usbcdc_event_task_id = 0;
 static uart_status_t usbcdc_status;
 SemaphoreHandle_t usbcdc_sem = NULL;
@@ -157,12 +162,12 @@ void uart_event_task(task_param_t param, task_prio_t prio)
   free(post);
 }
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_USB_CDC
 void usbcdc_event_task(task_param_t param, task_prio_t prio)
 {
   uart_event_post_t *post = (uart_event_post_t *)param;
   xSemaphoreGive(usbcdc_sem);
-  handle_uart_data(0, post, &usbcdc_status);
+  handle_uart_data(CONFIG_ESP_CONSOLE_UART_NUM, post, &usbcdc_status);
   free(post);
 }
 
@@ -186,7 +191,11 @@ static void task_usbcdc(void *pvParameters) {
       post->type = PLATFORM_UART_EVENT_DATA;
     }
 
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     int len = usb_serial_jtag_read_bytes(post->data, 64, portMAX_DELAY);
+#elif CONFIG_ESP_CONSOLE_USB_CDC
+    int len = (int)read(fileno(stdin), post->data, 64);
+#endif
 
     if (len > 0) {
       for (int i = 0; i < len; i++) {
@@ -410,8 +419,8 @@ int platform_uart_start( unsigned id )
   if(uart_event_task_id == 0)
     uart_event_task_id = task_get_id( uart_event_task );
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-  if (id == 0) {
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_USB_CDC
+  if (id == CONFIG_ESP_CONSOLE_UART_NUM) {
     if (usbcdc_event_task_id == 0) {
       usbcdc_event_task_id = task_get_id(usbcdc_event_task);
 
@@ -419,6 +428,7 @@ int platform_uart_start( unsigned id )
       /* Disable buffering on stdin */
       setvbuf(stdin, NULL, _IONBF, 0);
 
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
       /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
       esp_vfs_dev_usb_serial_jtag_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
       /* Move the caret to the beginning of the next line on '\n' */
@@ -442,6 +452,16 @@ int platform_uart_start( unsigned id )
 
       /* Tell vfs to use usb-serial-jtag driver */
       esp_vfs_usb_serial_jtag_use_driver();
+#elif CONFIG_ESP_CONSOLE_USB_CDC
+      /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
+      esp_vfs_dev_cdcacm_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+      /* Move the caret to the beginning of the next line on '\n' */
+      esp_vfs_dev_cdcacm_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
+
+      /* Enable blocking mode on stdin and stdout */
+      fcntl(fileno(stdout), F_SETFL, 0);
+      fcntl(fileno(stdin), F_SETFL, 0);     
+#endif
 
       usbcdc_status.line_buffer = malloc(LUA_MAXINPUT);
       usbcdc_status.line_position = 0;
@@ -506,8 +526,8 @@ void platform_uart_stop( unsigned id )
 int platform_uart_get_config(unsigned id, uint32_t *baudp, uint32_t *databitsp, uint32_t *parityp, uint32_t *stopbitsp) {
     int err;
 
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-    if (id == 0) {
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_ESP_CONSOLE_USB_CDC
+    if (id == CONFIG_ESP_CONSOLE_UART_NUM) {
       // Return dummy values
       *baudp = 115200;
       *databitsp = 8;
