@@ -3,6 +3,7 @@
 #include "lua.h"
 #include "lauxlib.h"
 #include <stdio.h>
+#include <unistd.h>
 
 static struct input_state {
   char       *data;
@@ -18,6 +19,13 @@ static struct input_state {
 #define LF  '\n'
 #define DEL  0x7f
 #define BS_OVER "\010 \010"
+
+#if CONFIG_ESP_CONSOLE_USB_CDC && (defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3))
+// The S2/S3 cdcacm_write() buffers writes overagressively with no option to disable
+#define FORCE_SYNC() fsync(fileno(stdout))
+#else
+#define FORCE_SYNC() do {} while(0) // noop
+#endif
 
 bool input_echo = true;
 bool run_input = true;
@@ -59,7 +67,10 @@ size_t feed_lua_input(const char *buf, size_t n)
     /* backspace key */
     if (ch == DEL || ch == BS) {
       if (ins.line_pos > 0) {
-        if(input_echo) printf(BS_OVER);
+        if (input_echo) {
+          printf(BS_OVER);
+          FORCE_SYNC();
+        }
         ins.line_pos--;
       }
       ins.data[ins.line_pos] = 0;
@@ -80,12 +91,16 @@ size_t feed_lua_input(const char *buf, size_t n)
         lua_input_string(ins.data, ins.line_pos);
         ins.line_pos = 0;
       }
+      FORCE_SYNC();
       continue;
     }
     else
       ins.last_nl_char = NUL;
 
-    if(input_echo) putchar(ch);
+    if (input_echo) {
+      putchar(ch);
+      FORCE_SYNC();
+    }
 
     /* it's a large line, discard it */
     if ( ins.line_pos + 1 >= ins.len ){

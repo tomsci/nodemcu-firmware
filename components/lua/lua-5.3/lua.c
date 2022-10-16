@@ -4,6 +4,7 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include "user_version.h"
@@ -211,6 +212,10 @@ static void dojob (lua_State *L) {
   prompt = get_prompt(L, MLref!= LUA_NOREF ? 0 : 1);
   input_setprompt(prompt);
   lua_writestring(prompt,strlen(prompt));
+#if CONFIG_ESP_CONSOLE_USB_CDC && (defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3))
+  // The S2/S3 cdcacm_write() buffers writes overagressively with no option to disable
+  fsync(fileno(stdout));
+#endif
 }
 
 
