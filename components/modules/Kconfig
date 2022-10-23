@@ -158,6 +158,13 @@ menu "NodeMCU modules"
         help
             Includes the I2S module.
 
+    config NODEMCU_CMODULE_LODEPNG
+        bool "LodePNG module"
+        default "n"
+        help
+            Includes the LodePNG PNG encoder/decoder module from
+            https://github.com/lvandeve/lodepng
+
     config NODEMCU_CMODULE_LEDC
         bool "LEDC module"
         default "n"

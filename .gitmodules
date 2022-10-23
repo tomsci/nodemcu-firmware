@@ -11,3 +11,6 @@
 [submodule "components/qrcodegen/qrcodegen"]
 	path = components/qrcodegen/qrcodegen
 	url = https://github.com/nayuki/QR-Code-generator.git
+[submodule "components/lodepng/lodepng"]
+	path = components/lodepng/lodepng
+	url = https://github.com/lvandeve/lodepng.git
