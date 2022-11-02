@@ -507,7 +507,7 @@ static int http_lapi_request(lua_State *L)
   if (context_flag(context, Async)) {
     if (xTaskCreate(perform_rtos_task,
                     "http_task",
-                    4096,
+                    5120,
                     (void *)context,
                     ESP_TASK_MAIN_PRIO + 1,
                     &context->perform_rtos_task) != pdPASS) {
