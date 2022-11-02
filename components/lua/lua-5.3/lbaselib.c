@@ -174,7 +174,7 @@ static int luaB_collectgarbage (lua_State *L) {
     "count", "step", "setpause", "setstepmul", "setmemlimit",
     "isrunning", NULL};
   static const int optsnum[] = {LUA_GCSTOP, LUA_GCRESTART, LUA_GCCOLLECT,
-    LUA_GCCOUNT, LUA_GCSTEP, LUA_GCSETPAUSE, LUA_GCSETSTEPMUL,
+    LUA_GCCOUNT, LUA_GCSTEP, LUA_GCSETPAUSE, LUA_GCSETSTEPMUL, LUA_GCSETMEMLIMIT,
     LUA_GCISRUNNING};
   int o = optsnum[luaL_checkoption(L, 1, "collect", opts)];
   int ex = (int)luaL_optinteger(L, 2, 0);
