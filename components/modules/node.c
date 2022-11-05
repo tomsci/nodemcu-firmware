@@ -9,6 +9,9 @@
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "soc/efuse_reg.h"
+#if SOC_TOUCH_SENSOR_NUM > 0
+#include "soc/touch_sensor_periph.h"
+#endif
 #include "ldebug.h"
 #include "esp_vfs.h"
 #include "lnodeaux.h"
@@ -141,6 +144,30 @@ static int node_bootreason( lua_State *L)
   if (rr0 == SW_CPU_RESET) {
     lua_pushinteger(L, (lua_Integer)panicval);
     return 3;
+  } else if (rr0 == DEEPSLEEP_RESET) {
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+#if SOC_PM_SUPPORT_EXT_WAKEUP
+      uint64_t gpios = esp_sleep_get_ext1_wakeup_status();
+      uint32_t lo = (uint32_t)gpios;
+      uint32_t hi = (uint32_t)(gpios >> 32);
+      lua_pushinteger(L, (lua_Integer)lo);
+      lua_pushinteger(L, (lua_Integer)hi);
+      return 4;
+#endif
+    } else if (cause == ESP_SLEEP_WAKEUP_TOUCHPAD) {
+#if SOC_TOUCH_SENSOR_NUM > 0
+      touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
+      if (pad >= 0 && pad < SOC_TOUCH_SENSOR_NUM) {
+        uint64_t gpio_mask = 1ULL << touch_sensor_channel_io_map[pad];
+        uint32_t lo = (uint32_t)gpio_mask;
+        uint32_t hi = (uint32_t)(gpio_mask >> 32);
+        lua_pushinteger(L, (lua_Integer)lo);
+        lua_pushinteger(L, (lua_Integer)hi);
+        return 4;
+      }
+#endif
+    }
   }
   return 2;
 }
