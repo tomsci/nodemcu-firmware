@@ -42,6 +42,7 @@ bool lfs_get_location(lfs_location_info_t *out)
       return false;
     }
   }
+  NODE_ERR("TOMSCI: LFS addr_phys=0x%08X addr_mem=%p\n", out->addr_phys, out->addr_mem);
   return true;
 #endif
 }
