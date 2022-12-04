@@ -158,6 +158,14 @@ menu "NodeMCU modules"
         help
             Includes the I2S module.
 
+    config NODEMCU_CMODULE_IRPWM
+        depends on IDF_TARGET_ESP32
+        bool "IRPWM module"
+        default "n"
+        help
+            Includes the irpwm module from
+            https://github.com/tomsci/nodemcu-irpwm
+
     config NODEMCU_CMODULE_LODEPNG
         bool "LodePNG module"
         default "n"
@@ -291,6 +299,13 @@ menu "NodeMCU modules"
         help
             Includes the touch module to use ESP32's built-in touch sensor
             hardware.
+
+    config NODEMCU_CMODULE_TURCUTILS
+        bool "turcutils module"
+        default "n"
+        help
+            Includes the turcutils module from
+            https://github.com/tomsci/nodemcu-turcutils
 
     config NODEMCU_CMODULE_U8G2
         bool "U8G2 module"
