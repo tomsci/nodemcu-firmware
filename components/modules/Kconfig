@@ -271,6 +271,12 @@ menu "NodeMCU modules"
         help
             Includes the spi module.
 
+    config NODEMCU_CMODULE_ST7789
+        bool "ST7789 display"
+        default "n"
+        help
+            Support for driving ST7789 displays.
+
     config NODEMCU_CMODULE_STRUCT
         bool "Struct module"
         default "n"

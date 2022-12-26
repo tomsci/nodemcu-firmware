@@ -31,6 +31,7 @@ set(module_srcs
   "sodium.c"
   "spi.c"
   "spi_master.c"
+  "st7789.c"
   "struct.c"
   "time.c"
   "tmr.c"
