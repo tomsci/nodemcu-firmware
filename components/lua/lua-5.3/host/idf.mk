@@ -1,6 +1,6 @@
 all: build
 
-HOSTCC?=$(PYTHON) -m ziglang cc
+HOSTCC?=cc
 
 ifeq ($V,)
   Q:=@
