@@ -88,6 +88,19 @@ chip ID (string)
 Note that due to the chip id being a much larger value on the ESP32, it is
 reported as a string now. E.g. `"0x1818fe346a88"`.
 
+## node.chiptype()
+
+Returns the ESP chip type, as defined at build time.
+
+#### Syntax
+`node.chiptype()`
+
+#### Parameters
+none
+
+#### Returns
+chip type as a string, for example `"esp32"`, `"esp32s2"`, `"esp32s3"` etc.
+
 ## node.compile()
 
 Compiles a Lua text file into Lua bytecode, and saves it as .lc file.
