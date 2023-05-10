@@ -248,7 +248,7 @@ int lspi_master( lua_State *L )
   lua_settop( L, top );
 
   int use_dma = luaL_optint( L, ++stack, 1 );
-  luaL_argcheck( L, use_dma >= 0 && use_dma <= 2, stack, "out of range" );
+  luaL_argcheck( L, use_dma >= 0 && use_dma <= 3, stack, "out of range" );
 
   if (no_err( spi_bus_initialize( host, &config, use_dma ) )) {
     lspi_host_t *ud = (lspi_host_t *)lua_newuserdata( L, sizeof( lspi_host_t ) );
