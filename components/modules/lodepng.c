@@ -5,7 +5,8 @@
 typedef enum {
   FMT_RGB_565, // 16-bit
   FMT_RGB, // 24-bit
-  FMT_RGBA // 32-bit
+  FMT_RGBA, // 32-bit
+  FMT_PALETTE, // 8-bit, palette
 } OutputFormat;
 
 static void convert_888_565(unsigned char* buf, const unsigned w, const unsigned h)
@@ -38,6 +39,9 @@ static void parse_format_arg(lua_State *L, OutputFormat* format, LodePNGColorTyp
     case FMT_RGBA:
       *colortype = LCT_RGBA;
       break;
+    case FMT_PALETTE:
+      *colortype = LCT_PALETTE;
+      break;
     default:
       luaL_error(L, "Bad output format");
   }
@@ -58,6 +62,8 @@ static int push_result(lua_State* L, unsigned err, OutputFormat format, unsigned
   if (format == FMT_RGB_565) {
     convert_888_565(buf, w, h);
     sz = w * h * 2;
+  } else if (format == FMT_PALETTE) {
+    sz = w * h;
   } else if (format == FMT_RGB) {
     sz = w * h * 3;
   } else {
@@ -103,6 +109,7 @@ LROT_BEGIN(lodepng, NULL, 0)
   LROT_INTENTRY(RGB, FMT_RGB)
   LROT_INTENTRY(RGB_565, FMT_RGB_565)
   LROT_INTENTRY(RGBA, FMT_RGBA)
+  LROT_INTENTRY(PALETTE, FMT_PALETTE)
 LROT_END(lodepng, NULL, 0)
 
 NODEMCU_MODULE(LODEPNG, "lodepng", lodepng, NULL);

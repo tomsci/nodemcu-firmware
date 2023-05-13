@@ -19,9 +19,12 @@ Decodes a PNG file into a memory buffer.
     - `lodepng.RGB` (24-bit RGB)
     - `lodepng.RGBA` (32-bit RGBA)
     - `lodepng.RGB_565)` (16-bit RGB in 5-6-5 format)
+    - `lodepng.PALETTE` (8-bit, see note below)
+
+Note, the `PALETTE` format should only be used if the PNG file is known in advance to be using a palette, _and_ the exact palette being used is also known in advance. In this mode the returned data will be 8 bits per pixel containing the index of the pixel colour in the palette. The main reason for using this format is that it uses less memory during the decode than any of the other formats.
 
 #### Returns
-`buf, width, height` if the PNG was successfully decoded, `nil, err` otherwise. `buf` is a string of the raw pixel data in the requested format. The length of `buf` will be `width * height * 2` for `RBG_565` format, `width * height * 3` for `RGB`, or `width * height * 4` for `RGBA`. If an error occurs, `err` will be a string describing the error.
+`buf, width, height` if the PNG was successfully decoded, `nil, err` otherwise. `buf` is a string of the raw pixel data in the requested format. The length of `buf` will be `width * height * 2` for `RBG_565` format, `width * height * 3` for `RGB`, `width * height * 4` for `RGBA`, and `width * height` for `PALETTE`. If an error occurs, `err` will be a string describing the error.
 
 #### Example
 ```lua
