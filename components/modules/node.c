@@ -19,6 +19,7 @@
 #include "rom/rtc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
+#include "user_version.h"
 
 static void restart_callback(TimerHandle_t timer) {
   (void)timer;
@@ -194,6 +195,18 @@ static int node_chipid( lua_State *L )
 static int node_chiptype( lua_State *L )
 {
   lua_pushliteral(L, CONFIG_IDF_TARGET);
+  return 1;
+}
+
+static int node_version( lua_State *L )
+{
+  lua_pushliteral(L, NODE_VERSION);
+  return 1;
+}
+
+static int node_build_date( lua_State *L )
+{
+  lua_pushliteral(L, BUILD_DATE);
   return 1;
 }
 
@@ -894,6 +907,8 @@ LROT_BEGIN(node, NULL, 0)
   LROT_FUNCENTRY( chipid,     node_chipid )
 #endif
   LROT_FUNCENTRY( chiptype,   node_chiptype )
+  LROT_FUNCENTRY( version,    node_version )
+  LROT_FUNCENTRY( builddate,  node_build_date )
   LROT_FUNCENTRY( compile,    node_compile )
   LROT_FUNCENTRY( dsleep,     node_dsleep )
 #if defined(CONFIG_LUA_VERSION_51)
