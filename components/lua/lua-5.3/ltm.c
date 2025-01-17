@@ -60,8 +60,8 @@ void luaT_init (lua_State *L) {
 const char *luaT_getstr (unsigned int i) {
   if (i < N_EVENTS)
     return luaT_eventname[i];
-  if (i < N_EVENTS + N_TYPES)
-    return luaT_typenames_[i - N_EVENTS];
+  // if (i < N_EVENTS + N_TYPES)
+  //   return luaT_typenames_[i - N_EVENTS];
   return NULL;
 }
 
